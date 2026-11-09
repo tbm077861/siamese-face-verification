@@ -1,0 +1,9 @@
+{
+  "monitor": "val_loss",
+  "best_value": 0.5033127069473267,
+  "best_epoch": 7,
+  "epochs_run": 17,
+  "training_seconds": 562.4,
+  "keras_backend": "torch",
+  "keras_version": "3.15.1"
+}

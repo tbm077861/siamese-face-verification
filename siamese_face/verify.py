@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 import numpy as np
-import tensorflow as tf
 
 from .config import UsageError
 from .data import is_image_file, list_images
@@ -74,12 +73,12 @@ def verify_image(
         raise UsageError("Không có ảnh tham chiếu nào để so sánh.")
 
     size = model_image_size(model)
-    probe = load_image(str(image_path), size)
+    probe = load_image(str(image_path), size).numpy()
     scores: list[float] = []
     for start in range(0, len(references), batch_size):
         chunk = references[start : start + batch_size]
-        reference_batch = tf.stack([load_image(path, size) for path in chunk])
-        probe_batch = tf.repeat(probe[tf.newaxis], repeats=len(chunk), axis=0)
-        output = model([reference_batch, probe_batch], training=False)
+        reference_batch = np.stack([load_image(path, size).numpy() for path in chunk])
+        probe_batch = np.repeat(probe[np.newaxis], len(chunk), axis=0)
+        output = model.predict_on_batch([reference_batch, probe_batch])
         scores.extend(float(score) for score in np.asarray(output).reshape(-1))
     return VerificationResult(references, scores, detection_threshold, verification_threshold)

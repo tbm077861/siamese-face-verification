@@ -29,8 +29,9 @@ def score_pairs(model, pairs: PairSet, batch_size: int = 32) -> np.ndarray:
     from .pipeline import make_dataset
 
     dataset = make_dataset(pairs, image_size=model_image_size(model), batch_size=batch_size)
+    # Ảnh do tf.data tạo được chuyển sang NumPy để chạy được với mọi backend Keras.
     batches = [
-        np.asarray(model([anchors, candidates], training=False)).reshape(-1)
+        np.asarray(model.predict_on_batch([anchors.numpy(), candidates.numpy()])).reshape(-1)
         for (anchors, candidates), _ in dataset
     ]
     return np.concatenate(batches)

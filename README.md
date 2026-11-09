@@ -67,18 +67,27 @@ pip install -r requirements.txt
 python -m pytest                    # kiểm tra cài đặt
 ```
 
-**Huấn luyện bằng GPU trên Windows.** Từ phiên bản 2.11, TensorFlow không còn hỗ trợ GPU
-trên Windows gốc. Hãy chạy trong WSL2 (Ubuntu):
+### Huấn luyện bằng GPU
+
+Mô hình được viết bằng Keras 3 nên chạy được trên ba backend: TensorFlow (mặc định),
+PyTorch và JAX. Chọn backend bằng `--backend` hoặc biến môi trường `KERAS_BACKEND`.
+`tf.data` chỉ dùng để đọc ảnh trên CPU, nên với mọi backend vẫn cần cài TensorFlow.
+
+Trên Windows, TensorFlow ≥ 2.11 không hỗ trợ GPU trên Windows gốc. Ngoài ra, TensorFlow 2.20
+cũng chưa chạy được trên GPU RTX 50-series (Blackwell, `sm_120`), báo lỗi
+`CUDA_ERROR_INVALID_PTX`. Cách đã kiểm chứng trên RTX 5070 Laptop là dùng **WSL2 + backend
+PyTorch**:
 
 ```bash
 python3 -m venv ~/venvs/appface
-~/venvs/appface/bin/pip install "tensorflow[and-cuda]" matplotlib pytest
+~/venvs/appface/bin/pip install torch --index-url https://download.pytorch.org/whl/cu128
+~/venvs/appface/bin/pip install "tensorflow-cpu" "keras>=3" matplotlib pytest
 cd /mnt/d/GithubProject/AppFace
-~/venvs/appface/bin/python -m siamese_face train --mode lfw
+~/venvs/appface/bin/python -m siamese_face --backend torch train --mode lfw --augment --batch-size 32
 ```
 
-Có thể kiểm tra GPU bằng lệnh
-`python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"`.
+Mô hình `.keras` huấn luyện bằng PyTorch vẫn đánh giá và xác minh được bằng backend
+TensorFlow trên Windows, và ngược lại.
 
 ## Quy trình thực nghiệm
 
@@ -183,12 +192,25 @@ sẽ lạc quan hơn thực tế.
 
 ## Kết quả thực nghiệm
 
-> Chưa có số liệu. Sau khi huấn luyện, điền bảng dưới đây từ mục `test` trong
-> `runs/<thời điểm>/metrics.json`.
+Kết quả trên **tập test gồm 758 người chưa từng thấy khi huấn luyện** (3.112 cặp, cân bằng),
+chế độ `lfw`. Phân tích chi tiết và biểu đồ có trong
+[`docs/phuong_phap.md`, mục 12](docs/phuong_phap.md).
 
-| Lần chạy | Cấu hình | Ngưỡng | Accuracy | Precision | Recall | F1 | FAR | FRR | ROC-AUC | EER |
-|---|---|---|---|---|---|---|---|---|---|---|
-| _(chưa chạy)_ | | | | | | | | | | |
+| Lần chạy | Cấu hình | ROC-AUC | EER | Ngưỡng τ (chọn trên val) | Accuracy | FAR | FRR |
+|---|---|---:|---:|---|---:|---:|---:|
+| `20261109-201136` | `lfw`, augment, lô 32, Adam 1e-4; dừng ở epoch 17, tốt nhất epoch 7; RTX 5070 + PyTorch, 9 phút 22 giây | **0,853** | **21,9%** | `f1`: 0,285 | 77,4% | 32,0% | 13,3% |
+| | | | | `youden`: 0,410 | 78,0% | 24,0% | 20,1% |
+| | | | | `eer`: 0,485 | 77,5% | 20,0% | 24,9% |
+
+Nhận xét chính:
+- Mô hình xác minh được người mới mà không cần huấn luyện lại (AUC 0,85).
+- Overfitting xuất hiện từ epoch 7, vì mô hình 39 triệu tham số chỉ có khoảng 1.200 người để học.
+- Với ứng dụng xác thực, nên chọn ngưỡng theo `eer` hoặc cao hơn để giảm tỉ lệ chấp nhận
+  nhầm người lạ (FAR).
+
+Tạo lại kết quả bằng
+`python -m siamese_face --backend torch train --mode lfw --augment --batch-size 32`
+(seed 42). Quá trình huấn luyện trên GPU không tất định từng bit, nên số liệu có thể xê dịch nhẹ.
 
 ## Kiểm thử
 

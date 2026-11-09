@@ -74,6 +74,14 @@ def test_cli_verify_uses_verification_folder_by_default():
     assert args.references == ["data/verification"]
 
 
+def test_cli_backend_option():
+    parser = build_parser()
+    assert parser.parse_args(["train"]).backend is None
+    assert parser.parse_args(["--backend", "torch", "train"]).backend == "torch"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--backend", "abc", "train"])
+
+
 def test_cli_requires_a_command():
     with pytest.raises(SystemExit):
         build_parser().parse_args([])

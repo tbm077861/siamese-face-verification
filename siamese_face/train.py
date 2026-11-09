@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-import tensorflow as tf
+import keras
 
 from . import plots
 from .config import (
@@ -23,7 +23,7 @@ from .model import build_siamese_model
 from .pipeline import make_dataset
 
 
-class BestWeights(tf.keras.callbacks.Callback):
+class BestWeights(keras.callbacks.Callback):
     """Ghi nhớ trọng số tốt nhất theo ``monitor`` và khôi phục khi kết thúc huấn luyện.
 
     Dừng sớm sau ``patience`` epoch không cải thiện (``None`` = không dừng sớm).
@@ -58,6 +58,14 @@ class BestWeights(tf.keras.callbacks.Callback):
             self.model.set_weights(self._best_weights)
 
 
+def export_model(model: keras.Model, path: str | Path) -> Path:
+    """Lưu kiến trúc + trọng số, *không* kèm trạng thái bộ tối ưu (mô hình chưa compile)."""
+    exported = keras.models.clone_model(model)
+    exported.set_weights(model.get_weights())
+    exported.save(str(path))
+    return Path(path)
+
+
 def create_run_dir(output_dir: str | Path) -> Path:
     """Tạo ``output_dir/<YYYYmmdd-HHMMSS>`` (thêm hậu tố nếu đã tồn tại)."""
     root = Path(output_dir)
@@ -71,7 +79,7 @@ def create_run_dir(output_dir: str | Path) -> Path:
 
 def train(config: TrainConfig) -> Path:
     """Huấn luyện theo ``config``; trả về thư mục chứa mô hình và nhật ký của lần chạy."""
-    tf.keras.utils.set_random_seed(config.seed)
+    keras.utils.set_random_seed(config.seed)
     splits = build_experiment_splits(
         config.mode,
         config.data_dir,
@@ -83,20 +91,20 @@ def train(config: TrainConfig) -> Path:
     )
     if len(splits.train) == 0:
         raise UsageError("Tập train rỗng - hãy bổ sung dữ liệu (xem data/README.md).")
-    print(f"Chế độ: {config.mode}")
+    print(f"Chế độ: {config.mode} | backend Keras: {keras.backend.backend()}")
     for name, pairs in splits.items():
         print(f"{name:>5}: {len(pairs):5d} cặp ({pairs.num_positive} cặp cùng người)")
 
     image_size = (config.image_size, config.image_size)
     model = build_siamese_model(input_shape=(*image_size, 3), embedding_dim=config.embedding_dim)
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=config.learning_rate),
-        loss=tf.keras.losses.BinaryCrossentropy(),
+        optimizer=keras.optimizers.Adam(learning_rate=config.learning_rate),
+        loss=keras.losses.BinaryCrossentropy(),
         metrics=[
-            tf.keras.metrics.BinaryAccuracy(name="accuracy"),
-            tf.keras.metrics.Precision(name="precision"),
-            tf.keras.metrics.Recall(name="recall"),
-            tf.keras.metrics.AUC(name="auc"),
+            keras.metrics.BinaryAccuracy(name="accuracy"),
+            keras.metrics.Precision(name="precision"),
+            keras.metrics.Recall(name="recall"),
+            keras.metrics.AUC(name="auc"),
         ],
     )
 
@@ -128,11 +136,13 @@ def train(config: TrainConfig) -> Path:
         validation_data=val_ds,
         epochs=config.epochs,
         callbacks=[tracker],
+        shuffle=False,  # đã xáo trộn trong tf.data (mỗi epoch một thứ tự mới)
         verbose=2,
     )
     elapsed = time.perf_counter() - started
 
-    model.save(str(run_dir / MODEL_FILENAME))
+    # Lưu bản không kèm trạng thái Adam: nhỏ hơn ~3 lần, đủ cho đánh giá và suy luận.
+    export_model(model, run_dir / MODEL_FILENAME)
     _write_history(history.history, run_dir / "history.csv")
     write_json(
         {
@@ -141,6 +151,8 @@ def train(config: TrainConfig) -> Path:
             "best_epoch": tracker.best_epoch,
             "epochs_run": len(history.history.get("loss", [])),
             "training_seconds": round(elapsed, 1),
+            "keras_backend": keras.backend.backend(),
+            "keras_version": keras.__version__,
         },
         run_dir / "training_summary.json",
     )

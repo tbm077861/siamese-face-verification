@@ -1,0 +1,17 @@
+{
+  "mode": "lfw",
+  "data_dir": "data",
+  "output_dir": "runs",
+  "image_size": 100,
+  "embedding_dim": 4096,
+  "epochs": 50,
+  "batch_size": 32,
+  "learning_rate": 0.0001,
+  "train_ratio": 0.7,
+  "val_ratio": 0.15,
+  "max_images": null,
+  "max_pairs_per_identity": 20,
+  "augment": true,
+  "patience": 10,
+  "seed": 42
+}

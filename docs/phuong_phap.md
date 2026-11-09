@@ -234,9 +234,11 @@ dụng cũ so sánh với một ảnh anchor duy nhất. Dùng nhiều ảnh tha
 
 ## 10. Hạn chế và hướng phát triển
 
-- **Thêm dữ liệu huấn luyện:** chế độ `lfw` chỉ có khoảng 1.200 người có từ hai ảnh trở lên
-  trong tập train. Các bộ lớn hơn (CASIA-WebFace, VGGFace2) sẽ cải thiện đáng kể khả năng
-  tổng quát hoá.
+- **Thêm dữ liệu huấn luyện:** chế độ `lfw` chỉ có 1.217 người có cặp dương trong tập train,
+  và thực nghiệm (mục 12) cho thấy overfitting xuất hiện từ epoch 7. Các bộ lớn hơn
+  (CASIA-WebFace, VGGFace2) sẽ cải thiện đáng kể khả năng tổng quát hoá.
+- **Chống overfitting:** thêm dropout hoặc weight decay cho lớp Dense(4096), tăng cường dữ
+  liệu mạnh hơn, giảm số chiều vector nhúng (`--embedding-dim`).
 - **Hàm mất mát học độ đo:** dùng contrastive loss (Hadsell và cộng sự, 2006) hoặc triplet
   loss (Schroff và cộng sự, 2015) thay cho binary cross-entropy.
 - **Phát hiện và căn chỉnh khuôn mặt** (MTCNN, RetinaFace, …) thay cho việc cắt vùng vuông
@@ -264,6 +266,77 @@ dụng cũ so sánh với một ảnh anchor duy nhất. Dùng nhiều ảnh tha
 > `pool_size`, nên đó thực chất là cửa sổ gộp **64×64** với bước 2, không phải 2×2 như bài
 > báo gốc. Vì kích thước đầu ra và số tham số không đổi, lỗi này khó phát hiện. Dự án dùng
 > đúng `pool_size=(2, 2), strides=2`.
+
+## 12. Kết quả thực nghiệm: chế độ `lfw`
+
+Số liệu và biểu đồ gốc nằm trong [`ket_qua/lfw_20261109-201136/`](ket_qua/lfw_20261109-201136/).
+
+### 12.1. Thiết lập
+
+| Hạng mục | Giá trị |
+|---|---|
+| Lệnh | `python -m siamese_face --backend torch train --mode lfw --augment --batch-size 32` |
+| Siêu tham số | Adam, tốc độ học $10^{-4}$, lô 32, tối đa 50 epoch, dừng sớm sau 10 epoch, tăng cường dữ liệu bật, seed 42 |
+| Dữ liệu (cặp) | train 14.360 · val 2.206 · test 3.112, mỗi tập 50% cặp cùng người |
+| Số người | train 3.448 (trong đó 1.217 người có cặp dương) · val 611 (211) · test 758 (252) – ba tập rời nhau |
+| Phần cứng | GPU RTX 5070 Laptop 8 GB qua WSL2; Keras 3.15 với backend PyTorch 2.11 (CUDA 12.8) |
+| Thời gian | 17 epoch × ~33 giây = 9 phút 22 giây; trọng số tốt nhất ở **epoch 7** (val_loss = 0,503) |
+
+### 12.2. Kết quả trên tập test – những người chưa từng thấy khi huấn luyện
+
+Các độ đo không phụ thuộc ngưỡng: **ROC-AUC = 0,853** và **EER = 21,9%**.
+
+| Cách chọn ngưỡng (trên tập val) | τ | Accuracy | Precision | Recall | F1 | FAR | FRR |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `f1` (mặc định) | 0,285 | 0,774 | 0,730 | **0,867** | **0,793** | 0,320 | **0,133** |
+| `youden` | 0,410 | **0,780** | 0,769 | 0,800 | 0,784 | 0,240 | 0,201 |
+| `eer` | 0,485 | 0,775 | 0,790 | 0,751 | 0,770 | 0,200 | 0,249 |
+| cố định 0,5 | 0,500 | 0,774 | **0,796** | 0,738 | 0,766 | **0,190** | 0,262 |
+
+![Đường cong huấn luyện](ket_qua/lfw_20261109-201136/training_curves.png)
+
+| ROC trên tập test | Phân bố điểm tương đồng trên tập test |
+|---|---|
+| ![ROC](ket_qua/lfw_20261109-201136/roc_curve.png) | ![Phân bố điểm](ket_qua/lfw_20261109-201136/score_distribution.png) |
+
+### 12.3. Phân tích
+
+1. **Mô hình tổng quát hoá được cho người mới.** AUC 0,853 trên 758 người chưa từng thấy
+   cho thấy mạng nhúng học được đặc trưng khuôn mặt chứ không chỉ ghi nhớ danh tính. Kết quả
+   trên val (AUC 0,849) và test (0,853) gần nhau, chứng tỏ ngưỡng chọn trên val không bị "khớp
+   may" với tập test.
+2. **Overfitting rõ rệt.** Từ epoch 7, val_loss tăng trở lại trong khi train accuracy tiếp
+   tục lên tới 99,4% ở epoch 17. Val AUC đi ngang quanh 0,85 từ epoch 6. Nguyên nhân là mô
+   hình có 39 triệu tham số (97% nằm ở lớp Dense 9.216 → 4.096) nhưng chỉ có khoảng 1.200
+   người có cặp dương để học. Val loss tăng trong khi AUC không giảm nghĩa là mô hình ngày
+   càng *tự tin quá mức* chứ chưa xếp hạng kém đi. Dừng sớm và khôi phục trọng số tốt nhất
+   là bắt buộc.
+3. **Chọn ngưỡng là chọn đánh đổi an ninh.** Tiêu chí `f1` cho F1 và recall cao nhất, nhưng
+   cứ khoảng 3 người lạ thì có 1 người được chấp nhận (FAR 32%) – không phù hợp cho xác thực.
+   Với ứng dụng bảo mật nên dùng `eer` hoặc ngưỡng cao hơn, chấp nhận FRR lớn hơn (người dùng
+   phải thử lại) để đổi lấy FAR thấp. Đọc trên đường ROC của tập test:
+
+   | FAR tối đa | 1% | 5% | 10% | 20% |
+   |---|---:|---:|---:|---:|
+   | TAR đạt được | 10,8% | 33,0% | 51,7% | 75,2% |
+
+   Ở mức an ninh chặt (FAR 1%), mô hình chỉ chấp nhận đúng khoảng 1/10 lần thử của chủ thể.
+   Đây là giới hạn thực tế lớn nhất của mô hình hiện tại.
+4. **Phân bố điểm.** Phần lớn cặp khác người có điểm gần 0, nhưng còn một "đuôi" các cặp
+   khó trải đều tới 1. Cặp cùng người thì phân tán rộng: nhiều cặp có điểm thấp do khác biệt
+   về tư thế, ánh sáng hoặc tuổi tác giữa các ảnh LFW, trong khi dự án chưa căn chỉnh khuôn
+   mặt (chỉ cắt vuông ở giữa ảnh).
+5. **Đặt trong bối cảnh.** DeepFace (97,35%) và FaceNet (99,63%) đạt độ chính xác rất cao
+   trên LFW. Tuy nhiên, các hệ thống đó được huấn luyện trên hàng triệu ảnh của hàng nghìn tới
+   hàng triệu người, có căn chỉnh khuôn mặt, và đánh giá theo giao thức 10-fold của LFW.
+   Mô hình ở đây học từ đầu trên khoảng 9 nghìn ảnh không căn chỉnh, nên hai kết quả *không
+   so sánh trực tiếp được*. Khoảng cách này chính là động lực cho các hướng phát triển ở
+   mục 10.
+6. **Tính tái lập và khả chuyển.** Mô hình huấn luyện bằng PyTorch trên GPU (Keras 3.15)
+   được đánh giá lại bằng TensorFlow trên CPU (Keras 3.12, qua cơ chế nạp trọng số dự phòng).
+   Accuracy, FAR, FRR và EER trùng khớp hoàn toàn; ROC-AUC chỉ lệch $4 \times 10^{-6}$ do làm
+   tròn số thực. Việc chia dữ liệu là tất định (seed 42); riêng quá trình huấn luyện trên GPU
+   không tất định từng bit, nên chạy lại có thể cho số liệu xê dịch nhẹ.
 
 ## Tài liệu tham khảo
 

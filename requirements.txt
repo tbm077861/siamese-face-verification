@@ -1,5 +1,6 @@
 # Lõi tính toán
-tensorflow>=2.13
+tensorflow>=2.16          # tf.data cho đường ống dữ liệu; backend mặc định của Keras
+keras>=3.0               # mô hình viết bằng Keras 3, chạy được trên TensorFlow / PyTorch / JAX
 numpy>=1.23
 opencv-python>=4.5   # chỉ dùng cho bước thu thập ảnh từ webcam
 

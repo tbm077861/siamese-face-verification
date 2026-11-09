@@ -1,13 +1,18 @@
 """Kiểm thử phần dùng TensorFlow: mô hình, tiền xử lý, suy luận (tự bỏ qua nếu chưa cài TF)."""
 
+import json
+import zipfile
+
 import numpy as np
 import pytest
 
 tf = pytest.importorskip("tensorflow")
+keras = pytest.importorskip("keras")
 
 from siamese_face.data import PairSet  # noqa: E402
 from siamese_face.model import (  # noqa: E402
     L1Dist,
+    architecture_from_archive,
     build_embedding,
     build_siamese_model,
     load_siamese_model,
@@ -29,10 +34,11 @@ def _random_images(n, seed=0):
 # ---------- Mô hình ----------
 
 def test_l1dist_is_absolute_difference():
-    a = tf.constant([[1.0, -2.0, 3.0]])
-    b = tf.constant([[3.0, 1.0, 3.0]])
-    np.testing.assert_allclose(L1Dist()(a, b).numpy(), [[2.0, 3.0, 0.0]])
-    np.testing.assert_allclose(L1Dist()([b, a]).numpy(), [[2.0, 3.0, 0.0]])
+    a = np.array([[1.0, -2.0, 3.0]], dtype="float32")
+    b = np.array([[3.0, 1.0, 3.0]], dtype="float32")
+    to_numpy = keras.ops.convert_to_numpy
+    np.testing.assert_allclose(to_numpy(L1Dist()(a, b)), [[2.0, 3.0, 0.0]])
+    np.testing.assert_allclose(to_numpy(L1Dist()([b, a])), [[2.0, 3.0, 0.0]])
 
 
 def test_default_architecture_parameter_count():
@@ -50,8 +56,8 @@ def test_rejects_too_small_images():
 def test_outputs_are_symmetric_probabilities():
     model = build_siamese_model(embedding_dim=8)
     x1, x2 = _random_images(2, seed=1), _random_images(2, seed=2)
-    p12 = model([x1, x2], training=False).numpy()
-    p21 = model([x2, x1], training=False).numpy()
+    p12 = model.predict_on_batch([x1, x2])
+    p21 = model.predict_on_batch([x2, x1])
     assert p12.shape == (2, 1)
     assert np.all((p12 >= 0) & (p12 <= 1))
     np.testing.assert_allclose(p12, p21, rtol=1e-5, atol=1e-6)
@@ -60,12 +66,47 @@ def test_outputs_are_symmetric_probabilities():
 def test_save_and_load_roundtrip(tmp_path):
     model = build_siamese_model(embedding_dim=8)
     x1, x2 = _random_images(2, seed=3), _random_images(2, seed=4)
-    expected = model([x1, x2], training=False).numpy()
+    expected = model.predict_on_batch([x1, x2])
     path = tmp_path / "model.keras"
     model.save(str(path))
     restored = load_siamese_model(path)
-    np.testing.assert_allclose(restored([x1, x2], training=False).numpy(), expected, rtol=1e-5, atol=1e-6)
+    np.testing.assert_allclose(restored.predict_on_batch([x1, x2]), expected, rtol=1e-5, atol=1e-6)
     assert model_image_size(restored) == (100, 100)
+
+
+def _simulate_newer_keras(src, dst):
+    """Chép file .keras, thêm tham số cấu hình mà bản Keras hiện tại không biết
+    (giống cách Keras 3.15 thêm ``input_axes`` cho GlorotUniform)."""
+    def add_unknown_key(node):
+        if isinstance(node, dict):
+            if node.get("class_name") == "GlorotUniform":
+                node["config"]["input_axes"] = None
+            for value in node.values():
+                add_unknown_key(value)
+        elif isinstance(node, list):
+            for value in node:
+                add_unknown_key(value)
+
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "config.json":
+                config = json.loads(data)
+                add_unknown_key(config)
+                data = json.dumps(config).encode("utf-8")
+            zout.writestr(item, data)
+
+
+def test_load_model_saved_by_newer_keras_falls_back_to_weights(tmp_path):
+    model = build_siamese_model(embedding_dim=8)
+    x1, x2 = _random_images(2, seed=5), _random_images(2, seed=6)
+    expected = model.predict_on_batch([x1, x2])
+    model.save(str(tmp_path / "current.keras"))
+    _simulate_newer_keras(tmp_path / "current.keras", tmp_path / "newer.keras")
+
+    assert architecture_from_archive(tmp_path / "newer.keras") == ((100, 100, 3), 8)
+    restored = load_siamese_model(tmp_path / "newer.keras")
+    np.testing.assert_allclose(restored.predict_on_batch([x1, x2]), expected, rtol=1e-5, atol=1e-6)
 
 
 def test_load_missing_model_raises(tmp_path):

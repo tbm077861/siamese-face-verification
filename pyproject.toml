@@ -9,7 +9,8 @@ description = "Xác minh khuôn mặt one-shot bằng mạng nơ-ron Siamese"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-    "tensorflow>=2.13",
+    "tensorflow>=2.16",
+    "keras>=3.0",
     "numpy>=1.23",
     "opencv-python>=4.5",
 ]

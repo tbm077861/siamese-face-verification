@@ -30,6 +30,13 @@ def build_parser() -> argparse.ArgumentParser:
         prog="python -m siamese_face",
         description="Xác minh khuôn mặt one-shot bằng mạng nơ-ron Siamese.",
     )
+    parser.add_argument(
+        "--backend",
+        choices=("tensorflow", "torch", "jax"),
+        default=None,
+        help="backend tính toán của Keras (mặc định: biến môi trường KERAS_BACKEND, nếu "
+        "không có thì tensorflow). Dùng torch để huấn luyện trên GPU RTX 50-series.",
+    )
     commands = parser.add_subparsers(dest="command", metavar="<lệnh>")
     commands.required = True
 
@@ -112,6 +119,9 @@ def _add_mode_arguments(parser, defaults: TrainConfig, suffix: str = "") -> None
 def main(argv: list[str] | None = None) -> int:
     _use_utf8_output()
     args = build_parser().parse_args(argv)
+    if args.backend:
+        # Phải đặt trước khi import keras - các lệnh chỉ import keras bên trong handler.
+        os.environ["KERAS_BACKEND"] = args.backend
     try:
         return args.handler(args)
     except (FileNotFoundError, UsageError) as error:
@@ -235,7 +245,7 @@ def _verify(args) -> int:
 
 
 def _summary(args) -> int:
-    import tensorflow as tf
+    import keras
 
     from .model import build_siamese_model, load_siamese_model
 
@@ -245,7 +255,7 @@ def _summary(args) -> int:
         model = build_siamese_model((args.image_size, args.image_size, 3), args.embedding_dim)
     model.summary()
     for layer in model.layers:
-        if isinstance(layer, tf.keras.Model):  # mạng nhúng lồng bên trong
+        if isinstance(layer, keras.Model):  # mạng nhúng lồng bên trong
             layer.summary()
     print(f"Tổng số tham số: {model.count_params():,}")
     return 0

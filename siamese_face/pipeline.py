@@ -1,7 +1,12 @@
-"""Đường ống dữ liệu TensorFlow: đọc ảnh, tiền xử lý, tăng cường và đóng lô."""
+"""Đường ống dữ liệu TensorFlow: đọc ảnh, tiền xử lý, tăng cường và đóng lô.
+
+``tf.data`` chỉ chạy trên CPU và dùng được với mọi backend Keras; khi backend là
+PyTorch/JAX, GPU được ẩn khỏi TensorFlow để nhường toàn bộ cho backend đó.
+"""
 
 from __future__ import annotations
 
+import keras
 import numpy as np
 import tensorflow as tf
 
@@ -9,6 +14,12 @@ from .config import IMAGE_SIZE, UsageError
 from .data import PairSet
 
 DEFAULT_SIZE = (IMAGE_SIZE, IMAGE_SIZE)
+
+if keras.backend.backend() != "tensorflow":
+    try:
+        tf.config.set_visible_devices([], "GPU")
+    except RuntimeError:  # TensorFlow đã khởi tạo thiết bị từ trước
+        pass
 
 
 def load_image(path, image_size=DEFAULT_SIZE) -> tf.Tensor:
