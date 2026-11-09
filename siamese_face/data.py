@@ -2,6 +2,12 @@
 
 Module không phụ thuộc TensorFlow để có thể kiểm thử nhanh và độc lập.
 
+Hai chế độ thực nghiệm (``MODES``):
+  - ``personal``: cặp (anchor, positive) / (anchor, negative) - mô hình cá nhân hoá
+    cho một người, cần ảnh webcam của người đó.
+  - ``lfw``: cặp cùng người / khác người lấy từ chính bộ LFW - mô hình tổng quát,
+    tập test gồm những người chưa từng thấy (đúng thiết lập one-shot).
+
 Giao thức chống rò rỉ dữ liệu (xem docs/phuong_phap.md, mục 7):
   1. Chia ảnh thành train/val/test *trước*, rồi mới ghép cặp trong từng tập.
   2. Ảnh negative chia theo *danh tính* - người lạ ở tập test chưa từng xuất hiện.
@@ -10,6 +16,7 @@ Giao thức chống rò rỉ dữ liệu (xem docs/phuong_phap.md, mục 7):
 
 from __future__ import annotations
 
+import itertools
 import json
 import random
 import re
@@ -159,6 +166,119 @@ def make_pairs(
     )
 
 
+def make_identity_pairs(
+    images: Sequence[str],
+    seed: int = 42,
+    max_pairs_per_identity: int = 20,
+) -> PairSet:
+    """Ghép cặp từ ảnh có nhãn danh tính trong tên file (kiểu LFW).
+
+    - Cặp dương: hai ảnh khác nhau của cùng một người; tối đa ``max_pairs_per_identity``
+      cặp mỗi người để vài người có rất nhiều ảnh (VD: George_W_Bush, 530 ảnh) không
+      áp đảo dữ liệu.
+    - Cặp âm: hai ảnh rút ngẫu nhiên đều trên toàn bộ ảnh, thuộc hai người khác nhau;
+      số cặp âm bằng số cặp dương (cân bằng lớp).
+    """
+    rng = random.Random(seed)
+    groups: dict[str, list[str]] = defaultdict(list)
+    for path in sorted(images):
+        groups[identity_from_filename(path)].append(path)
+
+    positives: list[tuple[str, str]] = []
+    for identity in sorted(groups):
+        combos = list(itertools.combinations(groups[identity], 2))
+        if len(combos) > max_pairs_per_identity:
+            combos = rng.sample(combos, max_pairs_per_identity)
+        positives.extend(combos)
+
+    pool = sorted(images)
+    negatives: set[tuple[str, str]] = set()
+    attempts, max_attempts = 0, 20 * len(positives) + 100
+    while len(groups) >= 2 and len(negatives) < len(positives) and attempts < max_attempts:
+        first, second = rng.sample(pool, 2)
+        if identity_from_filename(first) != identity_from_filename(second):
+            negatives.add((first, second))
+        attempts += 1
+
+    # sorted(...) vì thứ tự duyệt set phụ thuộc hash ngẫu nhiên của Python.
+    triples = [(a, b, 1) for a, b in positives] + [(a, b, 0) for a, b in sorted(negatives)]
+    rng.shuffle(triples)
+    return PairSet(
+        anchors=[a for a, _, _ in triples],
+        candidates=[b for _, b, _ in triples],
+        labels=[label for _, _, label in triples],
+    )
+
+
+def _split_ratios(train_ratio: float, val_ratio: float) -> tuple[float, float, float]:
+    test_ratio = 1.0 - train_ratio - val_ratio
+    if test_ratio < -1e-9:
+        raise UsageError(f"train_ratio + val_ratio phải ≤ 1 (đang là {train_ratio + val_ratio})")
+    return train_ratio, val_ratio, max(test_ratio, 0.0)
+
+
+def _load_image_list(directory: Path, seed: int, max_images: int | None) -> list[str]:
+    found = list_images(directory)
+    if not found:
+        raise FileNotFoundError(
+            f"Không có ảnh nào trong {directory} - xem data/README.md để chuẩn bị dữ liệu."
+        )
+    if max_images is not None and len(found) > max_images:
+        found = sorted(random.Random(seed).sample(found, max_images))
+    return found
+
+
+def build_identity_splits(
+    image_dir: str | Path,
+    train_ratio: float = 0.7,
+    val_ratio: float = 0.15,
+    seed: int = 42,
+    max_images: int | None = None,
+    max_pairs_per_identity: int = 20,
+) -> PairSplits:
+    """Chế độ ``lfw``: chia *danh tính* thành train/val/test rồi ghép cặp trong từng tập.
+
+    Người xuất hiện ở tập test không bao giờ xuất hiện khi huấn luyện, nên kết quả đo
+    được là khả năng xác minh người *mới* - đúng tinh thần one-shot.
+    """
+    images = _load_image_list(Path(image_dir), seed, max_images)
+    parts = split_items(
+        images, _split_ratios(train_ratio, val_ratio), seed, group_fn=identity_from_filename
+    )
+    train, val, test = (
+        make_identity_pairs(part, seed=seed + offset, max_pairs_per_identity=max_pairs_per_identity)
+        for offset, part in enumerate(parts)
+    )
+    return PairSplits(train=train, val=val, test=test)
+
+
+MODES = ("personal", "lfw")
+
+
+def build_experiment_splits(
+    mode: str,
+    data_dir: str | Path = "data",
+    train_ratio: float = 0.7,
+    val_ratio: float = 0.15,
+    seed: int = 42,
+    max_images: int | None = None,
+    max_pairs_per_identity: int = 20,
+) -> PairSplits:
+    """Tạo ba tập cặp theo chế độ thực nghiệm ``mode`` (``personal`` hoặc ``lfw``)."""
+    if mode == "personal":
+        return build_splits(data_dir, train_ratio, val_ratio, seed, max_images)
+    if mode == "lfw":
+        return build_identity_splits(
+            Path(data_dir) / NEGATIVE_DIR,
+            train_ratio,
+            val_ratio,
+            seed,
+            max_images,
+            max_pairs_per_identity,
+        )
+    raise UsageError(f"Chế độ không hợp lệ: {mode} (chọn một trong {MODES})")
+
+
 def build_splits(
     data_dir: str | Path = "data",
     train_ratio: float = 0.7,
@@ -166,23 +286,12 @@ def build_splits(
     seed: int = 42,
     max_images: int | None = None,
 ) -> PairSplits:
-    """Đọc ``data_dir/{anchor,positive,negative}`` và tạo ba tập cặp không rò rỉ dữ liệu."""
-    test_ratio = 1.0 - train_ratio - val_ratio
-    if test_ratio < -1e-9:
-        raise UsageError(f"train_ratio + val_ratio phải ≤ 1 (đang là {train_ratio + val_ratio})")
-    ratios = (train_ratio, val_ratio, max(test_ratio, 0.0))
-
-    images: dict[str, list[str]] = {}
-    for name in (ANCHOR_DIR, POSITIVE_DIR, NEGATIVE_DIR):
-        directory = Path(data_dir) / name
-        found = list_images(directory)
-        if not found:
-            raise FileNotFoundError(
-                f"Không có ảnh nào trong {directory} - xem data/README.md để chuẩn bị dữ liệu."
-            )
-        if max_images is not None and len(found) > max_images:
-            found = sorted(random.Random(seed).sample(found, max_images))
-        images[name] = found
+    """Chế độ ``personal``: đọc ``data_dir/{anchor,positive,negative}`` và tạo ba tập cặp."""
+    ratios = _split_ratios(train_ratio, val_ratio)
+    images = {
+        name: _load_image_list(Path(data_dir) / name, seed, max_images)
+        for name in (ANCHOR_DIR, POSITIVE_DIR, NEGATIVE_DIR)
+    }
 
     anchor_parts = split_items(images[ANCHOR_DIR], ratios, seed)
     positive_parts = split_items(images[POSITIVE_DIR], ratios, seed + 1)

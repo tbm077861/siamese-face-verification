@@ -45,6 +45,17 @@ def augment_image(image: tf.Tensor) -> tf.Tensor:
     return tf.clip_by_value(image, 0.0, 1.0)
 
 
+def load_images(paths, image_size=DEFAULT_SIZE, batch_size: int = 256) -> tf.Tensor:
+    """Nạp nhiều ảnh (song song) thành một tensor ``(n, cao, rộng, 3)`` nằm trên RAM CPU."""
+    dataset = (
+        tf.data.Dataset.from_tensor_slices(list(paths))
+        .map(lambda path: load_image(path, image_size), num_parallel_calls=tf.data.AUTOTUNE)
+        .batch(batch_size)
+    )
+    with tf.device("/CPU:0"):  # tf.data đọc tensor từ CPU; tránh đặt khối ảnh lên GPU
+        return tf.concat(list(dataset), axis=0)
+
+
 def make_dataset(
     pairs: PairSet,
     image_size=DEFAULT_SIZE,
@@ -52,30 +63,32 @@ def make_dataset(
     shuffle: bool = False,
     augment: bool = False,
     seed: int | None = None,
-    cache: bool = True,
 ) -> tf.data.Dataset:
     """``tf.data.Dataset`` sinh các lô ``((ảnh_anchor, ảnh_candidate), nhãn)``.
 
-    Khi ``shuffle=False`` thứ tự phần tử giữ nguyên như ``pairs`` (cần cho đánh giá).
-    Ảnh đã giải mã được cache *trước* bước tăng cường để mỗi epoch nhận biến thể mới.
+    Mỗi ảnh *duy nhất* chỉ được giải mã một lần và giữ trong RAM; các cặp chỉ lưu chỉ
+    số tới ảnh. Với LFW (~20 nghìn cặp trên ~13 nghìn ảnh) cách này tốn ~1 GB thay vì
+    vài GB nếu cache theo cặp. Khi ``shuffle=False`` thứ tự giữ nguyên như ``pairs``
+    (cần cho đánh giá); tăng cường dữ liệu được áp dụng lại ở mỗi epoch.
     """
     if len(pairs) == 0:
         raise UsageError("Không thể tạo dataset từ tập cặp rỗng.")
+    paths = sorted(set(pairs.anchors) | set(pairs.candidates))
+    position = {path: i for i, path in enumerate(paths)}
+    images = load_images(paths, image_size)
+
+    anchor_index = np.asarray([position[p] for p in pairs.anchors], dtype=np.int32)
+    candidate_index = np.asarray([position[p] for p in pairs.candidates], dtype=np.int32)
     labels = np.asarray(pairs.labels, dtype=np.float32).reshape(-1, 1)
-    dataset = tf.data.Dataset.from_tensor_slices((pairs.anchors, pairs.candidates, labels))
-
-    def load_pair(anchor_path, candidate_path, label):
-        images = (load_image(anchor_path, image_size), load_image(candidate_path, image_size))
-        return images, label
-
-    dataset = dataset.map(load_pair, num_parallel_calls=tf.data.AUTOTUNE)
-    if cache:
-        dataset = dataset.cache()
+    dataset = tf.data.Dataset.from_tensor_slices((anchor_index, candidate_index, labels))
     if shuffle:
         dataset = dataset.shuffle(len(pairs), seed=seed, reshuffle_each_iteration=True)
-    if augment:
-        dataset = dataset.map(
-            lambda images, label: ((augment_image(images[0]), augment_image(images[1])), label),
-            num_parallel_calls=tf.data.AUTOTUNE,
-        )
+
+    def gather_pair(i, j, label):
+        first, second = tf.gather(images, i), tf.gather(images, j)
+        if augment:
+            first, second = augment_image(first), augment_image(second)
+        return (first, second), label
+
+    dataset = dataset.map(gather_pair, num_parallel_calls=tf.data.AUTOTUNE)
     return dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)

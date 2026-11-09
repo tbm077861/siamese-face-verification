@@ -102,6 +102,31 @@ $$
 
 ## 5. Dữ liệu
 
+Dự án hỗ trợ hai chế độ thực nghiệm (`--mode`):
+
+| Chế độ | Cặp dương | Cặp âm | Mô hình thu được |
+|---|---|---|---|
+| `personal` | (anchor, positive) của một người | (anchor, ảnh LFW) | cá nhân hoá cho người đó |
+| `lfw` | hai ảnh khác nhau của cùng một người trong LFW | hai ảnh LFW của hai người khác nhau | tổng quát, xác minh được cả người chưa từng thấy |
+
+### 5.1. Chế độ `lfw` – tổng quát hoá cho người mới
+
+LFW có 13.233 ảnh của 5.749 người, trong đó 1.680 người có từ hai ảnh trở lên. Quy trình:
+
+1. **Chia theo danh tính:** mọi ảnh của một người nằm trọn trong train, val hoặc test (tỉ lệ
+   70/15/15 tính theo số ảnh).
+2. **Cặp dương:** mọi tổ hợp $\binom{k}{2}$ của người có $k \ge 2$ ảnh, giới hạn tối đa 20
+   cặp mỗi người (`--max-pairs-per-identity`). Nếu không giới hạn, riêng George W. Bush
+   (530 ảnh) đã có 140.185 cặp, áp đảo toàn bộ dữ liệu.
+3. **Cặp âm:** rút ngẫu nhiên đều hai ảnh thuộc hai người khác nhau, với số lượng bằng số
+   cặp dương.
+
+Vì tập test chỉ gồm những người mô hình *chưa từng thấy*, số liệu đo được chính là khả năng
+xác minh one-shot đúng nghĩa: chỉ cần một ảnh tham chiếu của người mới, không phải huấn luyện
+lại. Đây là thiết lập gốc của Koch và cộng sự.
+
+### 5.2. Chế độ `personal`
+
 | Tập | Nội dung | Nguồn |
 |---|---|---|
 | Anchor ($A$) | ảnh của người cần xác minh | webcam (`collect`, phím `a`) |
@@ -114,7 +139,15 @@ gồm $2n$ cặp với $n = \min(|A|, |P|, |N|)$.
 
 Vì mọi cặp đều chứa một ảnh anchor của cùng một người, mô hình thu được là mô hình **cá
 nhân hoá** cho người đó: thực chất là một bộ phân biệt "đúng người này hay không" được
-học dưới dạng so sánh cặp. Mục 10 trình bày cách tổng quát hoá.
+học dưới dạng so sánh cặp. Muốn xác minh người khác thì phải thu ảnh và huấn luyện lại;
+chế độ `lfw` không có hạn chế này.
+
+### 5.3. Bộ nhớ đệm theo ảnh
+
+Mỗi ảnh *duy nhất* chỉ được giải mã một lần và giữ trong RAM; mỗi cặp chỉ lưu hai chỉ số
+trỏ tới ảnh (`pipeline.make_dataset`). Ở chế độ `lfw`, khoảng 20 nghìn cặp dùng chung
+khoảng 13 nghìn ảnh, nên bộ nhớ cần ≈ 13.233 × 100 × 100 × 3 × 4 byte ≈ 1,6 GB. Nếu cache theo
+từng cặp, con số này sẽ là vài GB.
 
 ## 6. Tiền xử lý và tăng cường dữ liệu
 
@@ -201,9 +234,9 @@ dụng cũ so sánh với một ảnh anchor duy nhất. Dùng nhiều ảnh tha
 
 ## 10. Hạn chế và hướng phát triển
 
-- **Tổng quát hoá cho người mới:** huấn luyện trên cặp ảnh của *nhiều* danh tính (ví dụ
-  các cặp trong LFW) và chia dữ liệu theo danh tính, để mô hình xác minh được người chưa
-  từng thấy mà không cần huấn luyện lại – đúng tinh thần one-shot của Koch và cộng sự.
+- **Thêm dữ liệu huấn luyện:** chế độ `lfw` chỉ có khoảng 1.200 người có từ hai ảnh trở lên
+  trong tập train. Các bộ lớn hơn (CASIA-WebFace, VGGFace2) sẽ cải thiện đáng kể khả năng
+  tổng quát hoá.
 - **Hàm mất mát học độ đo:** dùng contrastive loss (Hadsell và cộng sự, 2006) hoặc triplet
   loss (Schroff và cộng sự, 2015) thay cho binary cross-entropy.
 - **Phát hiện và căn chỉnh khuôn mặt** (MTCNN, RetinaFace, …) thay cho việc cắt vùng vuông

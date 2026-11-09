@@ -18,7 +18,7 @@ from .config import (
     UsageError,
     write_json,
 )
-from .data import build_splits
+from .data import build_experiment_splits
 from .model import build_siamese_model
 from .pipeline import make_dataset
 
@@ -72,15 +72,18 @@ def create_run_dir(output_dir: str | Path) -> Path:
 def train(config: TrainConfig) -> Path:
     """Huấn luyện theo ``config``; trả về thư mục chứa mô hình và nhật ký của lần chạy."""
     tf.keras.utils.set_random_seed(config.seed)
-    splits = build_splits(
+    splits = build_experiment_splits(
+        config.mode,
         config.data_dir,
         train_ratio=config.train_ratio,
         val_ratio=config.val_ratio,
         seed=config.seed,
         max_images=config.max_images,
+        max_pairs_per_identity=config.max_pairs_per_identity,
     )
     if len(splits.train) == 0:
-        raise UsageError("Tập train rỗng - hãy thu thập thêm ảnh anchor/positive/negative.")
+        raise UsageError("Tập train rỗng - hãy bổ sung dữ liệu (xem data/README.md).")
+    print(f"Chế độ: {config.mode}")
     for name, pairs in splits.items():
         print(f"{name:>5}: {len(pairs):5d} cặp ({pairs.num_positive} cặp cùng người)")
 

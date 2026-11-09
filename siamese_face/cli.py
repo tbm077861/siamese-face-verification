@@ -11,6 +11,7 @@ import os
 import sys
 from pathlib import Path
 
+from .data import MODES
 from .config import (
     IMAGE_SIZE,
     METRICS_FILENAME,
@@ -45,6 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(handler=_collect)
 
     p = commands.add_parser("train", help="huấn luyện mạng Siamese")
+    _add_mode_arguments(p, defaults)
     p.add_argument("--data-dir", default=defaults.data_dir, help="(mặc định: %(default)s)")
     p.add_argument("--output-dir", default=defaults.output_dir, help="nơi tạo thư mục cho lần chạy (mặc định: %(default)s)")
     p.add_argument("--epochs", type=int, default=defaults.epochs, help="(mặc định: %(default)s)")
@@ -65,6 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     source = p.add_mutually_exclusive_group(required=True)
     source.add_argument("--run", help="thư mục một lần chạy (chứa model.keras và splits.json)")
     source.add_argument("--model", help="file mô hình bất kỳ (.keras/.h5); dữ liệu được chia lại từ --data-dir")
+    _add_mode_arguments(p, defaults, suffix=" - chỉ dùng với --model")
     p.add_argument("--data-dir", default=defaults.data_dir, help="(chỉ dùng với --model)")
     p.add_argument("--train-ratio", type=float, default=defaults.train_ratio, help="(chỉ dùng với --model)")
     p.add_argument("--val-ratio", type=float, default=defaults.val_ratio, help="(chỉ dùng với --model)")
@@ -88,6 +91,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--embedding-dim", type=int, default=defaults.embedding_dim)
     p.set_defaults(handler=_summary)
     return parser
+
+
+def _add_mode_arguments(parser, defaults: TrainConfig, suffix: str = "") -> None:
+    parser.add_argument(
+        "--mode",
+        choices=MODES,
+        default=defaults.mode,
+        help="personal: anchor/positive/negative của một người; lfw: cặp cùng/khác người "
+        f"từ data/negative (mặc định: %(default)s){suffix}",
+    )
+    parser.add_argument(
+        "--max-pairs-per-identity",
+        type=int,
+        default=defaults.max_pairs_per_identity,
+        help=f"số cặp dương tối đa mỗi người, chế độ lfw (mặc định: %(default)s){suffix}",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -133,6 +152,8 @@ def _train(args) -> int:
     from .train import train
 
     config = TrainConfig(
+        mode=args.mode,
+        max_pairs_per_identity=args.max_pairs_per_identity,
         data_dir=args.data_dir,
         output_dir=args.output_dir,
         image_size=args.image_size,
@@ -169,10 +190,15 @@ def _evaluate(args) -> int:
             args.run, criterion=args.criterion, batch_size=args.batch_size, output_dir=args.output_dir
         )
     else:
-        from .data import build_splits
+        from .data import build_experiment_splits
 
-        splits = build_splits(
-            args.data_dir, train_ratio=args.train_ratio, val_ratio=args.val_ratio, seed=args.seed
+        splits = build_experiment_splits(
+            args.mode,
+            args.data_dir,
+            train_ratio=args.train_ratio,
+            val_ratio=args.val_ratio,
+            seed=args.seed,
+            max_pairs_per_identity=args.max_pairs_per_identity,
         )
         report = evaluate_model(
             args.model, splits, criterion=args.criterion, batch_size=args.batch_size, output_dir=args.output_dir

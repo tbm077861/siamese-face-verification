@@ -28,9 +28,7 @@ def score_pairs(model, pairs: PairSet, batch_size: int = 32) -> np.ndarray:
     from .model import model_image_size
     from .pipeline import make_dataset
 
-    dataset = make_dataset(
-        pairs, image_size=model_image_size(model), batch_size=batch_size, cache=False
-    )
+    dataset = make_dataset(pairs, image_size=model_image_size(model), batch_size=batch_size)
     batches = [
         np.asarray(model([anchors, candidates], training=False)).reshape(-1)
         for (anchors, candidates), _ in dataset

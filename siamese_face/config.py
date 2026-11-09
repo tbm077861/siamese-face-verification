@@ -34,6 +34,7 @@ class UsageError(ValueError):
 class TrainConfig:
     """Siêu tham số của một lần huấn luyện, lưu kèm mô hình để tái lập thí nghiệm."""
 
+    mode: str = "personal"  # "personal" (anchor/positive/negative) hoặc "lfw" (cặp từ LFW)
     data_dir: str = "data"
     output_dir: str = "runs"
     image_size: int = IMAGE_SIZE
@@ -44,6 +45,7 @@ class TrainConfig:
     train_ratio: float = 0.7
     val_ratio: float = 0.15
     max_images: int | None = None
+    max_pairs_per_identity: int = 20  # chỉ dùng cho mode="lfw"
     augment: bool = False
     patience: int | None = 10
     seed: int = 42

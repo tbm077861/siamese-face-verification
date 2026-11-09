@@ -1,3 +1,4 @@
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -5,9 +6,11 @@ import pytest
 from siamese_face.data import (
     PairSet,
     PairSplits,
+    build_experiment_splits,
     build_splits,
     identity_from_filename,
     list_images,
+    make_identity_pairs,
     make_pairs,
     split_items,
 )
@@ -98,6 +101,45 @@ def test_pair_splits_roundtrip(tmp_path):
     path = tmp_path / "splits.json"
     splits.save(path)
     assert PairSplits.load(path) == splits
+
+
+def _lfw_like_names(people: int, images_per_person) -> list[str]:
+    return [
+        f"Person{p}_{i:04d}.jpg" for p in range(people) for i in range(1, images_per_person(p) + 1)
+    ]
+
+
+def test_make_identity_pairs_labels_are_correct_and_balanced():
+    images = _lfw_like_names(30, lambda p: 1 + p % 4)  # 1..4 ảnh mỗi người
+    pairs = make_identity_pairs(images, seed=0, max_pairs_per_identity=3)
+    assert pairs.num_positive == len(pairs) - pairs.num_positive > 0
+    for a, b, label in zip(pairs.anchors, pairs.candidates, pairs.labels):
+        assert a != b
+        assert (identity_from_filename(a) == identity_from_filename(b)) == (label == 1)
+    # Người có 4 ảnh có C(4,2) = 6 cặp, bị giới hạn còn 3
+    per_identity = Counter(identity_from_filename(a) for a, y in zip(pairs.anchors, pairs.labels) if y)
+    assert max(per_identity.values()) == 3
+
+
+def test_make_identity_pairs_is_deterministic():
+    images = _lfw_like_names(10, lambda p: 3)
+    assert make_identity_pairs(images, seed=5) == make_identity_pairs(list(reversed(images)), seed=5)
+
+
+def test_build_identity_splits_keeps_people_disjoint(tmp_path):
+    _touch(tmp_path / "negative", _lfw_like_names(40, lambda p: 2 + p % 3))
+    splits = build_experiment_splits("lfw", tmp_path, train_ratio=0.6, val_ratio=0.2, seed=1)
+    people = [
+        {identity_from_filename(p) for p in pairs.anchors + pairs.candidates}
+        for _, pairs in splits.items()
+    ]
+    assert all(people)
+    assert not (people[0] & people[1] or people[0] & people[2] or people[1] & people[2])
+
+
+def test_build_experiment_splits_rejects_unknown_mode(tmp_path):
+    with pytest.raises(ValueError):
+        build_experiment_splits("abc", tmp_path)
 
 
 def test_pair_set_rejects_mismatched_lengths():

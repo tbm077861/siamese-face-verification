@@ -54,6 +54,10 @@ def test_cli_train_defaults_match_config():
         defaults.learning_rate,
     )
     assert args.augment is False and args.patience == defaults.patience
+    assert args.mode == "personal"
+    assert build_parser().parse_args(["train", "--mode", "lfw"]).mode == "lfw"
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["train", "--mode", "abc"])
 
 
 def test_cli_evaluate_needs_exactly_one_source():

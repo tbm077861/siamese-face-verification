@@ -100,6 +100,17 @@ def test_make_dataset_batches_pairs(tmp_path):
     np.testing.assert_array_equal(labels.numpy(), [[1.0], [0.0]])
 
 
+def test_make_dataset_reuses_images_and_keeps_order(tmp_path):
+    a = _write_png(tmp_path / "a.png", np.zeros((30, 30, 3)))
+    b = _write_png(tmp_path / "b.png", np.full((30, 30, 3), 255))
+    pairs = PairSet(anchors=[a, a, b], candidates=[b, a, b], labels=[0, 1, 1])
+    batches = list(make_dataset(pairs, batch_size=3))
+    (first, second), labels = batches[0]
+    np.testing.assert_allclose(first.numpy().mean(axis=(1, 2, 3)), [0.0, 0.0, 1.0], atol=1e-6)
+    np.testing.assert_allclose(second.numpy().mean(axis=(1, 2, 3)), [1.0, 0.0, 1.0], atol=1e-6)
+    np.testing.assert_array_equal(labels.numpy().ravel(), [0.0, 1.0, 1.0])
+
+
 def test_make_dataset_rejects_empty_pairs():
     with pytest.raises(ValueError):
         make_dataset(PairSet())

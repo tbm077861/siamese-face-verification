@@ -27,3 +27,7 @@ packages = ["siamese_face"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+filterwarnings = [
+    # Cảnh báo nội bộ của Keras 3 khi chạy với NumPy 2, không liên quan đến mã của dự án.
+    "ignore:__array__ implementation doesn't accept a copy keyword:DeprecationWarning",
+]

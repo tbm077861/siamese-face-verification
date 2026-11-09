@@ -17,8 +17,11 @@ lý thuyết và phương pháp thực nghiệm được trình bày trong
 
 - **Mô hình:** mạng Siamese 38.964.545 tham số, đầu vào ảnh RGB 100×100; số chiều vector
   nhúng có thể tuỳ chỉnh.
-- **Dữ liệu:** ảnh *anchor* và *positive* của người cần xác minh (tự thu bằng webcam), ảnh
-  *negative* của người khác (bộ LFW).
+- **Hai chế độ thực nghiệm:**
+  - `lfw`: học từ các cặp cùng người / khác người trong bộ LFW, kiểm thử trên những người
+    chưa từng thấy (one-shot đúng nghĩa);
+  - `personal`: cá nhân hoá với ảnh *anchor*/*positive* tự thu bằng webcam và ảnh
+    *negative* từ LFW.
 - **Thực nghiệm không rò rỉ dữ liệu, tái lập được:** chia train/val/test ở mức ảnh *trước
   khi* ghép cặp; ảnh negative chia theo danh tính; seed cố định; danh sách chia được lưu
   cùng mô hình.
@@ -64,6 +67,19 @@ pip install -r requirements.txt
 python -m pytest                    # kiểm tra cài đặt
 ```
 
+**Huấn luyện bằng GPU trên Windows.** Từ phiên bản 2.11, TensorFlow không còn hỗ trợ GPU
+trên Windows gốc. Hãy chạy trong WSL2 (Ubuntu):
+
+```bash
+python3 -m venv ~/venvs/appface
+~/venvs/appface/bin/pip install "tensorflow[and-cuda]" matplotlib pytest
+cd /mnt/d/GithubProject/AppFace
+~/venvs/appface/bin/python -m siamese_face train --mode lfw
+```
+
+Có thể kiểm tra GPU bằng lệnh
+`python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"`.
+
 ## Quy trình thực nghiệm
 
 Mọi bước đều chạy qua một giao diện dòng lệnh duy nhất: `python -m siamese_face <lệnh>`.
@@ -71,9 +87,9 @@ Xem tuỳ chọn của từng lệnh bằng `python -m siamese_face <lệnh> --h
 
 | Bước | Lệnh | Kết quả |
 |---|---|---|
-| 1. Ảnh negative | `prepare-negatives <lfw.tgz \| thư mục \| URL>` | `data/negative/` |
-| 2. Ảnh anchor/positive | `collect` | `data/anchor/`, `data/positive/`, `data/verification/` |
-| 3. Huấn luyện | `train [--augment] [--epochs 50]` | `runs/<thời điểm>/` |
+| 1. Ảnh LFW | `prepare-negatives <lfw.tgz \| thư mục \| URL>` | `data/negative/` |
+| 2. Ảnh của bạn (chỉ chế độ `personal`) | `collect` | `data/anchor/`, `data/positive/`, `data/verification/` |
+| 3. Huấn luyện | `train --mode lfw` hoặc `train --mode personal` | `runs/<thời điểm>/` |
 | 4. Đánh giá | `evaluate --run runs/<thời điểm>` | `metrics.json` và biểu đồ |
 | 5. Xác minh | `verify --model <mô hình> --image <ảnh>` | khớp / không khớp |
 | – | `summary` | kiến trúc và số tham số |
@@ -87,7 +103,7 @@ python -m siamese_face prepare-negatives D:\Downloads\lfw.tgz
 Nguồn có thể là file nén, thư mục đã giải nén hoặc URL. Xem [`data/README.md`](data/README.md)
 để biết nơi tải bộ LFW.
 
-### 2. Thu thập ảnh anchor và positive
+### 2. Thu thập ảnh anchor và positive (chỉ cho chế độ `personal`)
 
 ```powershell
 python -m siamese_face collect
@@ -105,8 +121,13 @@ Nên thu khoảng 300 ảnh mỗi loại, với nhiều góc mặt, điều ki�
 ### 3. Huấn luyện
 
 ```powershell
-python -m siamese_face train --augment
+python -m siamese_face train --mode lfw --augment        # mô hình tổng quát (chỉ cần LFW)
+python -m siamese_face train --mode personal --augment   # mô hình cá nhân hoá (cần bước 2)
 ```
+
+Chế độ `lfw` chia dữ liệu theo người, nên tập test chỉ gồm những người mô hình chưa từng
+thấy. Mô hình thu được có thể dùng ngay để xác minh bạn (bước 5) với vài ảnh tham chiếu,
+không cần huấn luyện lại.
 
 Mỗi lần chạy tạo một thư mục `runs/<YYYYmmdd-HHMMSS>/`:
 
