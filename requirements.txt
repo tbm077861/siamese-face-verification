@@ -1,0 +1,8 @@
+# Lõi tính toán
+tensorflow>=2.13
+numpy>=1.23
+opencv-python>=4.5   # chỉ dùng cho bước thu thập ảnh từ webcam
+
+# Báo cáo & kiểm thử
+matplotlib>=3.5
+pytest>=7.0

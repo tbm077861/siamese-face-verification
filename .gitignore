@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Môi trường ảo
+venv/
+.venv/
+env/
+
+# Dữ liệu huấn luyện: dung lượng lớn và mang tính cá nhân -> không đưa lên git
+data/anchor/*
+data/positive/*
+data/negative/*
+data/downloads/
+!data/*/.gitkeep
+
+# Mô hình và kết quả thí nghiệm (sinh ra khi chạy)
+models/*
+!models/.gitkeep
+runs/
+
+# IDE / hệ điều hành
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# File nén dữ liệu tải về (VD: lfw.tgz)
+*.tgz
+*.tar.gz
+*.zip

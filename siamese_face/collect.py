@@ -1,0 +1,71 @@
+"""Thu thập ảnh anchor / positive / verification từ webcam bằng OpenCV.
+
+Mỗi khung hình được cắt vùng vuông ở giữa (mặc định 250×250 - cùng cỡ ảnh LFW)
+để phân phối ảnh tự thu gần với ảnh negative.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+
+from .config import ANCHOR_DIR, POSITIVE_DIR, UsageError, VERIFICATION_DIR
+
+KEY_TO_SUBDIR = {"a": ANCHOR_DIR, "p": POSITIVE_DIR, "v": VERIFICATION_DIR}
+WINDOW_TITLE = "Thu thap du lieu - a: anchor | p: positive | v: verification | q: thoat"
+
+
+def center_crop(frame: np.ndarray, size: int) -> np.ndarray:
+    """Cắt vùng vuông cạnh ``size`` ở giữa khung hình (thu nhỏ nếu khung hình nhỏ hơn)."""
+    height, width = frame.shape[:2]
+    size = min(size, height, width)
+    top = (height - size) // 2
+    left = (width - size) // 2
+    return frame[top : top + size, left : left + size]
+
+
+def save_image(image: np.ndarray, directory: Path) -> Path:
+    """Lưu ảnh JPEG, tên file theo thời điểm chụp (sắp xếp được theo thời gian)."""
+    import cv2
+
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{datetime.now():%Y%m%d_%H%M%S_%f}.jpg"
+    ok, encoded = cv2.imencode(".jpg", image)
+    if not ok:
+        raise RuntimeError("Không mã hoá được ảnh JPEG")
+    # Ghi bằng Python thay vì cv2.imwrite để không lỗi với đường dẫn Unicode trên Windows.
+    path.write_bytes(encoded.tobytes())
+    return path
+
+
+def collect_samples(data_dir: Path, camera_index: int = 0, crop_size: int = 250) -> dict[str, int]:
+    """Mở webcam; nhấn a/p/v để lưu ảnh vào anchor/positive/verification, q để thoát."""
+    import cv2
+
+    capture = cv2.VideoCapture(camera_index)
+    if not capture.isOpened():
+        raise UsageError(f"Không mở được camera số {camera_index} - thử --camera 1 hoặc kiểm tra quyền camera.")
+    counts = {subdir: 0 for subdir in KEY_TO_SUBDIR.values()}
+    print("Phím tắt: [a] lưu anchor, [p] lưu positive, [v] lưu ảnh tham chiếu, [q] thoát")
+    try:
+        while True:
+            ok, frame = capture.read()
+            if not ok:
+                print("Không đọc được khung hình từ camera.")
+                break
+            crop = center_crop(frame, crop_size)
+            cv2.imshow(WINDOW_TITLE, crop)
+            key = chr(cv2.waitKey(1) & 0xFF).lower()
+            if key == "q":
+                break
+            if key in KEY_TO_SUBDIR:
+                subdir = KEY_TO_SUBDIR[key]
+                path = save_image(crop, Path(data_dir) / subdir)
+                counts[subdir] += 1
+                print(f"[{subdir}] {path.name} (đã lưu {counts[subdir]} ảnh trong phiên này)")
+    finally:
+        capture.release()
+        cv2.destroyAllWindows()
+    return counts
