@@ -11,10 +11,11 @@ venv/
 .venv/
 env/
 
-# Dữ liệu huấn luyện: dung lượng lớn và mang tính cá nhân -> không đưa lên git
+# Dữ liệu: dung lượng lớn và mang tính cá nhân (ảnh khuôn mặt) -> không đưa lên git
 data/anchor/*
 data/positive/*
 data/negative/*
+data/verification/*
 data/downloads/
 !data/*/.gitkeep
 

@@ -5,7 +5,7 @@
 | `anchor/` | Ảnh khuôn mặt của người cần xác minh | `python -m siamese_face collect` (phím `a`) | Không |
 | `positive/` | Ảnh khác của chính người đó | `collect` (phím `p`) | Không |
 | `negative/` | Ảnh của người khác | `python -m siamese_face prepare-negatives <nguồn>` | Không |
-| `verification/` | Ảnh tham chiếu dùng khi xác minh (`verify`) | `collect` (phím `v`) hoặc chép tay | Có |
+| `verification/` | Ảnh tham chiếu dùng khi xác minh (`verify`) | `collect` (phím `v`) hoặc chép tay | Không |
 | `downloads/` | File nén tải về khi nguồn là URL | tự sinh | Không |
 
 Ảnh có thể ở định dạng `.jpg`, `.jpeg`, `.png` hoặc `.bmp`.
@@ -26,17 +26,32 @@ Lệnh chỉ chép file ảnh và giữ nguyên tên dạng `Ten_Nguoi_0001.jpg`
 chia tập dữ liệu theo danh tính, nên một người lạ chỉ xuất hiện trong đúng một tập
 train, val hoặc test.
 
-## Gợi ý khi thu thập ảnh anchor/positive
+## Lưu ý khi chụp ảnh bằng `collect`
 
-- Thu tối thiểu khoảng 300 ảnh anchor và 300 ảnh positive.
-- Giữ khuôn mặt ở giữa khung hình (vùng cắt 250×250 hiện trên cửa sổ camera).
-- Thay đổi góc mặt, khoảng cách, ánh sáng, biểu cảm, có và không đeo kính.
-- Thu ảnh qua nhiều phiên khác nhau (khác ngày, khác ánh sáng), vì các khung hình chụp
-  liên tiếp gần như trùng nhau.
+Mô hình học từ ảnh LFW: khung vuông, mặt ở giữa, chiếm khoảng nửa chiều cao khung, thấy
+cả tóc và một phần vai. Ảnh chụp càng giống như vậy thì kết quả càng tốt.
 
-## `verification/anchor.png`
+- **Click vào cửa sổ camera trước khi bấm phím.** OpenCV chỉ nhận phím `a`/`p`/`v`/`q`
+  khi cửa sổ camera đang được chọn; mỗi ảnh lưu thành công sẽ in một dòng ra terminal.
+- **Khung hình:** vùng 250×250 hiện trên cửa sổ chính là vùng được lưu. Đặt mặt ở giữa,
+  trán đến cằm chiếm khoảng nửa chiều cao (thường ngồi cách webcam 50–70 cm).
+- **Ánh sáng:** đều, chiếu từ phía trước; tránh ngồi ngược sáng hoặc đèn gắt một bên.
+- **Rõ nét:** không che mặt, không có người khác trong khung, giữ yên đầu khi bấm.
+- **Bấm từng lần, không giữ phím** (giữ phím sẽ lưu hàng chục khung gần như trùng nhau);
+  mỗi lần đổi nhẹ góc mặt hoặc biểu cảm.
 
-Đây là ảnh tham chiếu duy nhất của phiên bản ứng dụng cũ. File thực chất là ảnh PNG
-1151×2560 nên đã được đổi đuôi từ `.jpg` sang `.png`. Vì là ảnh dọc, khi suy luận ảnh sẽ bị
-cắt vùng vuông ở giữa. Nên thay hoặc bổ sung bằng các ảnh chính diện chụp bằng `collect`
-(phím `v`).
+Số lượng:
+
+- Ảnh tham chiếu (`v`) cho mô hình LFW: 5–10 ảnh chính diện, chụp trong điều kiện giống
+  lúc sẽ xác minh.
+- Chế độ `personal` (`a`/`p`): khoảng 300 ảnh mỗi loại, thay đổi góc mặt (15–30°), biểu
+  cảm, có và không đeo kính, và chụp qua nhiều phiên khác nhau (khác ngày, khác ánh
+  sáng). Nếu chụp hết trong một phiên, tập test gần như trùng tập train và số liệu đánh
+  giá sẽ cao giả tạo.
+
+## Quyền riêng tư
+
+Mọi ảnh trong `anchor/`, `positive/`, `negative/` và `verification/` đều bị `.gitignore`
+bỏ qua, chỉ nằm trên máy. Ảnh `verification/anchor.png` của phiên bản ứng dụng cũ (ảnh
+dọc 1151×2560, không phù hợp làm ảnh tham chiếu) đã được gỡ khỏi git nhưng vẫn còn trong
+lịch sử các commit cũ.
