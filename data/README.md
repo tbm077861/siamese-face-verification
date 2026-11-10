@@ -33,8 +33,10 @@ cả tóc và một phần vai. Ảnh chụp càng giống như vậy thì kết
 
 - **Click vào cửa sổ camera trước khi bấm phím.** OpenCV chỉ nhận phím `a`/`p`/`v`/`q`
   khi cửa sổ camera đang được chọn; mỗi ảnh lưu thành công sẽ in một dòng ra terminal.
-- **Khung hình:** vùng 250×250 hiện trên cửa sổ chính là vùng được lưu. Đặt mặt ở giữa,
-  trán đến cằm chiếm khoảng nửa chiều cao (thường ngồi cách webcam 50–70 cm).
+- **Khung hình:** vùng hiện trên cửa sổ chính là vùng được lưu. Đặt mặt (trán đến cằm)
+  vừa trong **hình elip xanh** - đúng cỡ mặt trong ảnh LFW (khoảng 45% cạnh ảnh). Nếu mặt
+  to hơn elip, hãy lùi xa webcam hoặc tăng vùng cắt, ví dụ `collect --crop-size 450`.
+  Elip chỉ để hiển thị, không có trong ảnh lưu.
 - **Ánh sáng:** đều, chiếu từ phía trước; tránh ngồi ngược sáng hoặc đèn gắt một bên.
 - **Rõ nét:** không che mặt, không có người khác trong khung, giữ yên đầu khi bấm.
 - **Bấm từng lần, không giữ phím** (giữ phím sẽ lưu hàng chục khung gần như trùng nhau);

@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from siamese_face.cli import build_parser
-from siamese_face.collect import center_crop
+from siamese_face.collect import center_crop, draw_guide, guide_box
 from siamese_face.config import TrainConfig, write_json
 
 
@@ -43,6 +43,18 @@ def test_center_crop_takes_middle_square():
 def test_center_crop_clamps_to_frame():
     frame = np.zeros((200, 300, 3), dtype=np.uint8)
     assert center_crop(frame, 250).shape == (200, 200, 3)
+
+
+def test_guide_box_is_centered_and_lfw_sized():
+    x1, y1, x2, y2 = guide_box(250)
+    assert (x1 + x2) / 2 == 125 and (y1 + y2) / 2 == 125
+    assert 100 <= x2 - x1 <= 125  # mặt LFW rộng ~110 px trên ảnh 250 px
+
+
+def test_draw_guide_does_not_modify_saved_crop():
+    crop = np.zeros((250, 250, 3), dtype=np.uint8)
+    preview = draw_guide(crop)
+    assert not crop.any() and preview.any()
 
 
 def test_cli_train_defaults_match_config():
