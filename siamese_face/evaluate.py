@@ -12,7 +12,15 @@ from pathlib import Path
 import numpy as np
 
 from . import plots
-from .config import METRICS_FILENAME, MODEL_FILENAME, SPLITS_FILENAME, UsageError, write_json
+from .config import (
+    METRICS_FILENAME,
+    MODEL_FILENAME,
+    SPLITS_FILENAME,
+    UsageError,
+    check_preprocess,
+    preprocess_for_model,
+    write_json,
+)
 from .data import PairSet, PairSplits
 from .metrics import (
     best_threshold,
@@ -23,12 +31,14 @@ from .metrics import (
 )
 
 
-def score_pairs(model, pairs: PairSet, batch_size: int = 32) -> np.ndarray:
+def score_pairs(model, pairs: PairSet, batch_size: int = 32, preprocess: str = "center") -> np.ndarray:
     """Điểm tương đồng (xác suất cùng người) của từng cặp, đúng thứ tự trong ``pairs``."""
     from .model import model_image_size
     from .pipeline import make_dataset
 
-    dataset = make_dataset(pairs, image_size=model_image_size(model), batch_size=batch_size)
+    dataset = make_dataset(
+        pairs, image_size=model_image_size(model), batch_size=batch_size, preprocess=preprocess
+    )
     # Ảnh do tf.data tạo được chuyển sang NumPy để chạy được với mọi backend Keras.
     batches = [
         np.asarray(model.predict_on_batch([anchors.numpy(), candidates.numpy()])).reshape(-1)
@@ -54,17 +64,19 @@ def evaluate_model(
     criterion: str = "f1",
     batch_size: int = 32,
     output_dir: str | Path | None = None,
+    preprocess: str = "center",
 ) -> dict:
     """Đánh giá ``model_path`` trên ``splits`` theo giao thức val -> test."""
     from .model import load_siamese_model
 
+    check_preprocess(preprocess)
     if len(splits.test) == 0:
         raise UsageError("Tập test rỗng - cần thêm dữ liệu hoặc giảm --train-ratio/--val-ratio.")
     model = load_siamese_model(model_path)
-    report: dict = {"model": str(model_path), "criterion": criterion}
+    report: dict = {"model": str(model_path), "criterion": criterion, "preprocess": preprocess}
 
     if has_both_classes(splits.val.labels):
-        val_scores = score_pairs(model, splits.val, batch_size)
+        val_scores = score_pairs(model, splits.val, batch_size, preprocess)
         threshold = best_threshold(splits.val.labels, val_scores, criterion)
         report["threshold_source"] = f"tập val, tiêu chí {criterion}"
         report["val"] = summarize(splits.val.labels, val_scores, threshold)
@@ -74,7 +86,7 @@ def evaluate_model(
     report["threshold"] = float(threshold)
 
     labels = np.asarray(splits.test.labels)
-    scores = score_pairs(model, splits.test, batch_size)
+    scores = score_pairs(model, splits.test, batch_size, preprocess)
     report["test"] = summarize(labels, scores, threshold)
     report["test_at_0.5"] = classification_metrics(labels, scores, 0.5)
 
@@ -94,24 +106,33 @@ def evaluate_run(
     criterion: str = "f1",
     batch_size: int = 32,
     output_dir: str | Path | None = None,
+    preprocess: str | None = None,
 ) -> dict:
-    """Đánh giá một lần chạy của lệnh ``train`` trên đúng tập test đã lưu trong splits.json."""
+    """Đánh giá một lần chạy của lệnh ``train`` trên đúng tập test đã lưu trong splits.json.
+
+    Mặc định dùng đúng cách tiền xử lý ghi trong ``config.json`` của lần chạy.
+    """
     run_dir = Path(run_dir)
     splits_path = run_dir / SPLITS_FILENAME
     if not splits_path.is_file():
         raise FileNotFoundError(f"Không thấy {splits_path} - đây có phải thư mục kết quả của train?")
+    model_path = run_dir / MODEL_FILENAME
     return evaluate_model(
-        run_dir / MODEL_FILENAME,
+        model_path,
         PairSplits.load(splits_path),
         criterion=criterion,
         batch_size=batch_size,
         output_dir=output_dir or run_dir,
+        preprocess=preprocess_for_model(model_path, preprocess),
     )
 
 
 def format_report(report: dict) -> str:
     """Bản tóm tắt dễ đọc để in ra màn hình."""
-    lines = [f"Ngưỡng quyết định τ = {report['threshold']:.4f} ({report['threshold_source']})"]
+    lines = [
+        f"Tiền xử lý: {report.get('preprocess', 'center')}",
+        f"Ngưỡng quyết định τ = {report['threshold']:.4f} ({report['threshold_source']})",
+    ]
     for name in ("val", "test"):
         m = report.get(name)
         if not m:

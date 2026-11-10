@@ -36,7 +36,9 @@ cả tóc và một phần vai. Ảnh chụp càng giống như vậy thì kết
 - **Khung hình:** vùng hiện trên cửa sổ chính là vùng được lưu. Đặt mặt (trán đến cằm)
   vừa trong **hình elip xanh** - đúng cỡ mặt trong ảnh LFW (khoảng 45% cạnh ảnh). Nếu mặt
   to hơn elip, hãy lùi xa webcam hoặc tăng vùng cắt, ví dụ `collect --crop-size 450`.
-  Elip chỉ để hiển thị, không có trong ảnh lưu.
+  Elip chỉ để hiển thị, không có trong ảnh lưu. Với mô hình huấn luyện bằng
+  `--preprocess face`, ảnh được cắt quanh khuôn mặt trước khi so khớp, nên khoảng cách tới
+  camera ít quan trọng hơn; vẫn nên giữ mặt ở giữa và nhìn thẳng.
 - **Ánh sáng:** đều, chiếu từ phía trước; tránh ngồi ngược sáng hoặc đèn gắt một bên.
 - **Rõ nét:** không che mặt, không có người khác trong khung, giữ yên đầu khi bấm.
 - **Bấm từng lần, không giữ phím** (giữ phím sẽ lưu hàng chục khung gần như trùng nhau);

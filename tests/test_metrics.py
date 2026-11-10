@@ -90,3 +90,51 @@ def test_has_both_classes():
     assert has_both_classes([0, 1])
     assert not has_both_classes([1, 1])
     assert not has_both_classes([])
+
+
+def test_tar_at_far_reads_roc():
+    from siamese_face.metrics import tar_at_far
+
+    labels = [1, 1, 1, 1, 0, 0, 0, 0]
+    scores = [0.9, 0.8, 0.4, 0.3, 0.7, 0.2, 0.1, 0.05]
+    assert tar_at_far(labels, scores, 0.0) == 0.5  # trước người lạ đầu tiên (0.7)
+    assert tar_at_far(labels, scores, 0.25) == 1.0
+    assert tar_at_far(labels, scores, 1.0) == 1.0
+
+
+def test_paired_bootstrap_identical_models_have_zero_difference():
+    from siamese_face.metrics import paired_bootstrap, roc_auc
+
+    rng = np.random.default_rng(1)
+    labels = np.r_[np.ones(30), np.zeros(30)]
+    scores = rng.random(60)
+    result = paired_bootstrap(labels, scores, scores, roc_auc, n_boot=100)
+    assert result["delta"] == result["ci_low"] == result["ci_high"] == 0.0
+    assert result["n_clusters"] == 60
+
+
+def test_paired_bootstrap_is_reproducible_and_uses_clusters():
+    from siamese_face.metrics import paired_bootstrap, roc_auc
+
+    rng = np.random.default_rng(2)
+    labels = np.r_[np.ones(40), np.zeros(40)]
+    worse, better = rng.random(80), np.clip(0.5 * labels + 0.5 * rng.random(80), 0, 1)
+    groups = np.arange(80) % 8
+    first = paired_bootstrap(labels, worse, better, roc_auc, groups=groups, n_boot=200, seed=3)
+    again = paired_bootstrap(labels, worse, better, roc_auc, groups=groups, n_boot=200, seed=3)
+    assert first == again
+    assert first["n_clusters"] == 8
+    assert first["ci_low"] <= first["delta"] <= first["ci_high"]
+    assert first["delta"] > 0
+
+
+def test_bootstrap_ci_stratified_keeps_rare_class():
+    from siamese_face.metrics import bootstrap_ci, roc_auc
+
+    labels = np.r_[np.ones(3), np.zeros(50)]
+    scores = np.r_[[0.9, 0.6, 0.4], np.linspace(0.0, 0.7, 50)]
+    result = bootstrap_ci(labels, scores, roc_auc, stratify=True, n_boot=300, seed=1)
+    assert result["ci_low"] <= result["value"] <= result["ci_high"] <= 1.0
+    assert result == bootstrap_ci(labels, scores, roc_auc, stratify=True, n_boot=300, seed=1)
+    with pytest.raises(ValueError):
+        bootstrap_ci(labels, scores, roc_auc, groups=np.zeros(53), stratify=True, n_boot=5)

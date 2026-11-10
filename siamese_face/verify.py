@@ -9,7 +9,7 @@ Khi K = 1 quy tắc trở thành s ≥ τ_d, giống phiên bản ứng dụng c
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -18,7 +18,7 @@ import numpy as np
 from .config import UsageError
 from .data import is_image_file, list_images
 from .model import model_image_size
-from .pipeline import load_image
+from .pipeline import preprocess_image
 
 
 @dataclass
@@ -27,6 +27,7 @@ class VerificationResult:
     scores: list[float]
     detection_threshold: float = 0.5
     verification_threshold: float = 0.5
+    no_face: list[str] = field(default_factory=list)  # ảnh không phát hiện được khuôn mặt
 
     @property
     def detections(self) -> int:
@@ -64,6 +65,7 @@ def verify_image(
     detection_threshold: float = 0.5,
     verification_threshold: float = 0.5,
     batch_size: int = 32,
+    preprocess: str = "center",
 ) -> VerificationResult:
     """So ảnh ``image_path`` với từng ảnh tham chiếu và áp dụng quy tắc quyết định."""
     if not Path(image_path).is_file():
@@ -73,12 +75,22 @@ def verify_image(
         raise UsageError("Không có ảnh tham chiếu nào để so sánh.")
 
     size = model_image_size(model)
-    probe = load_image(str(image_path), size).numpy()
+    no_face: list[str] = []
+
+    def load(path: str) -> np.ndarray:
+        image, detected = preprocess_image(path, size, preprocess)
+        if detected is False:
+            no_face.append(path)
+        return image
+
+    probe = load(str(image_path))
     scores: list[float] = []
     for start in range(0, len(references), batch_size):
         chunk = references[start : start + batch_size]
-        reference_batch = np.stack([load_image(path, size).numpy() for path in chunk])
+        reference_batch = np.stack([load(path) for path in chunk])
         probe_batch = np.repeat(probe[np.newaxis], len(chunk), axis=0)
         output = model.predict_on_batch([reference_batch, probe_batch])
         scores.extend(float(score) for score in np.asarray(output).reshape(-1))
-    return VerificationResult(references, scores, detection_threshold, verification_threshold)
+    return VerificationResult(
+        references, scores, detection_threshold, verification_threshold, no_face
+    )

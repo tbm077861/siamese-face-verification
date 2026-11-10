@@ -1,0 +1,103 @@
+{
+  "model": "runs/20261109-201136/model.keras",
+  "preprocess": "center",
+  "n_references": 14,
+  "n_probes": 6,
+  "n_impostors": 300,
+  "impostor_dir": "data/negative",
+  "excluded_identities": 4059,
+  "seed": 0,
+  "faces_detected": {
+    "references": null,
+    "probes": null,
+    "impostors": null
+  },
+  "pairs": {
+    "roc_auc": 0.6303231292517008,
+    "roc_auc_ci95": [
+      0.5768342545351474,
+      0.6797013180272109
+    ],
+    "eer": 0.38166666666666665,
+    "eer_threshold": 0.3896021544933319,
+    "median_genuine": 0.42556755244731903,
+    "median_impostor": 0.255967915058136
+  },
+  "images": {
+    "roc_auc": 0.6522222222222223,
+    "roc_auc_ci95": [
+      0.5833333333333333,
+      0.7144722222222221
+    ],
+    "eer": 0.33333333333333337,
+    "eer_threshold": 0.43572052674634115,
+    "median_genuine": 0.44535937532782555,
+    "median_impostor": 0.2763775841199926
+  },
+  "verification_threshold": 0.5,
+  "decisions": [
+    {
+      "detection_threshold": 0.3,
+      "genuine_accepted": 5,
+      "n_genuine": 6,
+      "tar": 0.8333333333333334,
+      "impostors_accepted": 131,
+      "n_impostors": 300,
+      "far": 0.43666666666666665
+    },
+    {
+      "detection_threshold": 0.4,
+      "genuine_accepted": 5,
+      "n_genuine": 6,
+      "tar": 0.8333333333333334,
+      "impostors_accepted": 109,
+      "n_impostors": 300,
+      "far": 0.36333333333333334
+    },
+    {
+      "detection_threshold": 0.5,
+      "genuine_accepted": 0,
+      "n_genuine": 6,
+      "tar": 0.0,
+      "impostors_accepted": 87,
+      "n_impostors": 300,
+      "far": 0.29
+    },
+    {
+      "detection_threshold": 0.6,
+      "genuine_accepted": 0,
+      "n_genuine": 6,
+      "tar": 0.0,
+      "impostors_accepted": 65,
+      "n_impostors": 300,
+      "far": 0.21666666666666667
+    },
+    {
+      "detection_threshold": 0.7,
+      "genuine_accepted": 0,
+      "n_genuine": 6,
+      "tar": 0.0,
+      "impostors_accepted": 45,
+      "n_impostors": 300,
+      "far": 0.15
+    },
+    {
+      "detection_threshold": 0.8,
+      "genuine_accepted": 0,
+      "n_genuine": 6,
+      "tar": 0.0,
+      "impostors_accepted": 28,
+      "n_impostors": 300,
+      "far": 0.09333333333333334
+    },
+    {
+      "detection_threshold": 0.9,
+      "genuine_accepted": 0,
+      "n_genuine": 6,
+      "tar": 0.0,
+      "impostors_accepted": 12,
+      "n_impostors": 300,
+      "far": 0.04
+    }
+  ]
+}

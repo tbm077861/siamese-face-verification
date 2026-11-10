@@ -151,19 +151,57 @@ từng cặp, con số này sẽ là vài GB.
 
 ## 6. Tiền xử lý và tăng cường dữ liệu
 
-Một hàm duy nhất, `pipeline.load_image`, được dùng cho cả huấn luyện, đánh giá và suy luận
-nhằm tránh lệch tiền xử lý giữa các giai đoạn (*training/serving skew*):
+Huấn luyện, đánh giá và suy luận dùng chung một cách tiền xử lý, nhằm tránh lệch tiền xử lý
+giữa các giai đoạn (*training/serving skew*). Cách tiền xử lý được ghi vào `config.json` của
+lần chạy (trường `preprocess`), nên các lệnh `evaluate`, `verify` và `field-test` tự đọc lại
+và dùng đúng cách đó. Có hai cách (`--preprocess`):
 
-1. Giải mã ảnh JPEG/PNG/BMP, nhận dạng định dạng theo nội dung file chứ không theo đuôi.
-2. Cắt vùng vuông lớn nhất ở giữa ảnh để không làm méo tỉ lệ khuôn mặt.
-3. Resize song tuyến tính về 100×100.
-4. Chuẩn hoá giá trị điểm ảnh về $[0, 1]$.
+| Cách | Bước cắt | Hàm |
+|---|---|---|
+| `center` (mặc định) | vùng vuông lớn nhất ở giữa ảnh | `pipeline.load_image` |
+| `face` | vùng vuông quanh khuôn mặt phát hiện được | `pipeline.load_face_image`, `faces.crop_face` |
 
-Ảnh tự thu bằng webcam được cắt sẵn vùng 250×250 ở giữa khung hình, cùng cỡ với ảnh LFW, để
-hai nguồn dữ liệu có phân phối gần nhau.
+Sau bước cắt, cả hai cách giống nhau:
+- giải mã JPEG/PNG/BMP, nhận dạng định dạng theo nội dung file chứ không theo đuôi;
+- resize song tuyến tính về 100×100;
+- chuẩn hoá giá trị điểm ảnh về $[0, 1]$.
 
-**Tăng cường** (tuỳ chọn, chỉ áp dụng cho tập train, độc lập cho từng ảnh trong cặp): lật
-ngang ngẫu nhiên, thay đổi độ sáng ±0,1, độ tương phản và độ bão hoà trong khoảng ×[0,8; 1,2].
+Lệnh `collect` cắt sẵn vùng vuông ở giữa khung hình (mặc định 250×250, cùng cỡ ảnh LFW). Nó
+cũng vẽ một elip hướng dẫn đúng cỡ khuôn mặt trong ảnh LFW, để ảnh tự chụp có cùng tỉ lệ
+khuôn mặt so với khung.
+
+### 6.1. Phát hiện và cắt khuôn mặt (`face`)
+
+1. **Phát hiện:** dùng bộ phân loại Haar cascade `haarcascade_frontalface_default.xml` có sẵn
+   trong OpenCV (Viola và Jones, 2001).
+   - Chạy trên ảnh xám đã cân bằng histogram.
+   - Tham số `scaleFactor = 1,1`, `minNeighbors = 5`.
+   - Bỏ qua các vùng nhỏ hơn 20% cạnh ngắn của ảnh.
+2. **Chọn khuôn mặt:** nếu phát hiện được nhiều vùng, lấy vùng có tâm gần tâm ảnh nhất, vì
+   chủ thể của ảnh LFW và ảnh tự chụp đều ở giữa khung.
+3. **Cắt:** lấy vùng vuông cùng tâm với hộp phát hiện, cạnh bằng 1,4 lần cạnh hộp (nới mỗi
+   phía 20% để lấy trọn trán và cằm). Nếu vùng này chạm mép ảnh thì dịch vào trong.
+4. **Không thấy khuôn mặt:** cắt vùng vuông ở giữa ảnh, cạnh bằng 60% cạnh ngắn. Trên ảnh
+   LFW, vùng này xấp xỉ vùng cắt khi phát hiện được mặt.
+
+Ảnh LFW vốn được tạo bằng chính bộ phát hiện Viola–Jones rồi căn khuôn mặt vào giữa, nên trên
+LFW bước này chủ yếu *phóng to* khuôn mặt và bỏ bớt nền. Với ảnh tự chụp, bước này đưa khuôn
+mặt về cùng vị trí và cùng tỉ lệ khung như ảnh LFW, dù người chụp ngồi gần hay xa camera.
+
+| Đo trên | Kết quả |
+|---|---|
+| LFW (13.233 ảnh) | Phát hiện được mặt ở 98,5% số ảnh. Cạnh vùng cắt có trung vị 160 px trên ảnh 250 px (khoảng 5%–95%: 147–174 px). Tâm vùng cắt lệch trung vị 2 px so với tâm ảnh. Tốc độ khoảng 3,7 ms/ảnh trên CPU. |
+| Ảnh webcam của chủ thể (20 ảnh, khung 450 px) | Phát hiện được mặt ở cả 20/20 ảnh. |
+
+Đây mới là bước *phát hiện và cắt*, chưa phải *căn chỉnh*: ảnh chưa được xoay để hai mắt nằm
+ngang và chưa đưa mắt về vị trí cố định, nên khuôn mặt nghiêng vẫn giữ nguyên góc nghiêng.
+
+### 6.2. Tăng cường dữ liệu
+
+Tăng cường là tuỳ chọn, chỉ áp dụng cho tập train và độc lập cho từng ảnh trong cặp:
+- lật ngang ngẫu nhiên;
+- thay đổi độ sáng ±0,1;
+- thay đổi độ tương phản và độ bão hoà trong khoảng ×[0,8; 1,2].
 
 ## 7. Giao thức chia dữ liệu – chống rò rỉ
 
@@ -241,8 +279,9 @@ dụng cũ so sánh với một ảnh anchor duy nhất. Dùng nhiều ảnh tha
   liệu mạnh hơn, giảm số chiều vector nhúng (`--embedding-dim`).
 - **Hàm mất mát học độ đo:** dùng contrastive loss (Hadsell và cộng sự, 2006) hoặc triplet
   loss (Schroff và cộng sự, 2015) thay cho binary cross-entropy.
-- **Phát hiện và căn chỉnh khuôn mặt** (MTCNN, RetinaFace, …) thay cho việc cắt vùng vuông
-  cố định ở giữa ảnh.
+- **Căn chỉnh khuôn mặt:** đã có bước phát hiện và cắt khuôn mặt bằng Haar cascade (mục 6.1
+  và 13). Bước tiếp theo là căn chỉnh theo các điểm mốc (mắt, mũi, miệng), dùng các bộ phát
+  hiện mạnh hơn như MTCNN, RetinaFace hoặc YuNet.
 - **Thu gọn mô hình:** thay Flatten + Dense(4096) (≈97% tham số) bằng Global Average
   Pooling, hoặc dùng backbone đã huấn luyện trước (MobileNet, ResNet) với học chuyển giao.
 - **Đánh giá theo chuẩn:** áp dụng giao thức 10-fold trên `pairs.txt` của LFW để so sánh
@@ -338,6 +377,115 @@ Các độ đo không phụ thuộc ngưỡng: **ROC-AUC = 0,853** và **EER = 2
    tròn số thực. Việc chia dữ liệu là tất định (seed 42); riêng quá trình huấn luyện trên GPU
    không tất định từng bit, nên chạy lại có thể cho số liệu xê dịch nhẹ.
 
+## 13. Thực nghiệm: phát hiện và cắt khuôn mặt (`--preprocess face`)
+
+Mô hình ở mục 12 gần như không phân biệt được chủ thể với người lạ trên ảnh webcam (mục 13.3).
+Giả thuyết là do ảnh chỉ được cắt vùng giữa (`center`), nên nền, quần áo và tỉ lệ khung hình
+đi thẳng vào mạng. Thực nghiệm này kiểm tra giả thuyết đó bằng cách **chỉ đổi bước cắt ảnh**,
+giữ nguyên mọi thứ khác. Số liệu gốc nằm trong
+[`ket_qua/lfw_face_20261110-162959/`](ket_qua/lfw_face_20261110-162959/) và
+[`ket_qua/so_sanh_center_face/`](ket_qua/so_sanh_center_face/).
+
+### 13.1. Thiết lập
+
+| Hạng mục | Giá trị |
+|---|---|
+| Lệnh | `python -m siamese_face --backend torch train --mode lfw --augment --batch-size 32 --preprocess face` |
+| Khác với mục 12 | chỉ khác `--preprocess face` (mục 6.1); kiến trúc, siêu tham số, seed và tập train/val/test giống hệt (14.360 / 2.206 / 3.112 cặp) |
+| Phát hiện khuôn mặt | 98,5% ảnh LFW; 20/20 ảnh webcam |
+| Thời gian | 20 epoch, 9 phút 48 giây; trọng số tốt nhất ở **epoch 10** (val_loss = 0,513) |
+
+### 13.2. Trên tập test LFW
+
+Bảng dưới là kết quả của lệnh `compare` trên cùng 3.112 cặp test. Khoảng tin cậy 95% (KTC) của
+hiệu số được tính bằng bootstrap phân vị với 2.000 lần lấy mẫu, lấy mẫu lại theo **cụm danh
+tính** của ảnh anchor (595 cụm), vì các cặp của cùng một người không độc lập.
+
+| Độ đo | `center` (mục 12) | `face` | Hiệu số | KTC 95% của hiệu số |
+|---|---:|---:|---:|---|
+| ROC-AUC | 0,853 | 0,852 | −0,001 | [−0,017; +0,016] |
+| EER | 21,9% | 22,8% | +0,9 điểm | [−1,5; +2,8] |
+| TAR tại FAR 1% | 10,8% | 16,7% | +5,9 điểm | [+0,1; +12,8] |
+| TAR tại FAR 10% | 51,7% | 53,7% | +2,0 điểm | [−4,6; +8,4] |
+
+Kết quả của mô hình `face` trên tập test, với ngưỡng chọn trên tập val:
+
+| Cách chọn ngưỡng | τ | Accuracy | Precision | Recall | F1 | FAR | FRR |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `f1` | 0,404 | 0,769 | 0,727 | 0,862 | 0,789 | 0,324 | 0,138 |
+| `youden` | 0,544 | 0,772 | 0,765 | 0,785 | 0,775 | 0,241 | 0,215 |
+| `eer` | 0,573 | 0,773 | 0,774 | 0,771 | 0,772 | 0,225 | 0,229 |
+| cố định 0,5 | 0,500 | 0,772 | 0,753 | 0,812 | 0,781 | 0,267 | 0,188 |
+
+Dòng `f1` được đo trong WSL (PyTorch). Các dòng `youden` và `eer` được đo lại trên Windows
+(TensorFlow, CPU). Hai môi trường cho ROC-AUC lệch nhau 6·10⁻⁶ và cùng EER, nên bước cắt
+khuôn mặt bằng hai bản OpenCV 4.13 cho kết quả như nhau.
+
+### 13.3. Trên ảnh tự chụp bằng webcam (lệnh `field-test`)
+
+- **Thiết lập:** 14 ảnh tham chiếu và 6 ảnh thử của **một** chủ thể, chụp trong cùng một buổi.
+  So với chúng là 300 người lạ lấy ngẫu nhiên (seed 0) từ 758 danh tính của tập test, tức
+  những người cả hai mô hình chưa từng thấy. Cả hai mô hình dùng đúng cùng các ảnh này.
+- **Khoảng tin cậy 95%:** bootstrap lấy lại theo ảnh, phân tầng theo lớp.
+
+| | `center` | `face` |
+|---|---|---|
+| ROC-AUC theo cặp (ảnh tham chiếu, ảnh cần xác minh) | 0,630 (0,577–0,680) | **0,879** (0,844–0,912) |
+| ROC-AUC theo ảnh (điểm trung bình trên 14 ảnh tham chiếu) | 0,652 (0,583–0,714) | **0,902** (0,860–0,941) |
+| EER theo ảnh | 33,3% | 15,2% |
+| Trung vị điểm: chủ thể / người lạ | 0,43 / 0,26 | 0,83 / 0,21 |
+
+Bảng quyết định theo quy tắc của lệnh `verify` (mục 9), với τ_v = 0,5:
+
+| τ_d | `center`: chủ thể được chấp nhận | `center`: người lạ được chấp nhận | `face`: chủ thể được chấp nhận | `face`: người lạ được chấp nhận |
+|---:|---:|---:|---:|---:|
+| 0,4 | 5/6 | 36,3% | 6/6 | 37,3% |
+| 0,5 | 0/6 | 29,0% | 6/6 | 30,0% |
+| 0,7 | 0/6 | 15,0% | 6/6 | 16,7% |
+| 0,8 | 0/6 | 9,3% | 5/6 | 10,0% |
+| 0,9 | 0/6 | 4,0% | 0/6 | 5,0% |
+
+### 13.4. Phân tích
+
+1. **Trên ảnh webcam, giả thuyết được xác nhận.**
+   - Chỉ đổi bước cắt ảnh mà ROC-AUC theo ảnh tăng từ 0,65 lên 0,90; hai khoảng tin cậy không
+     giao nhau.
+   - Điểm tương đồng của chủ thể tăng từ 0,43 lên 0,83, trong khi điểm của người lạ gần như
+     giữ nguyên.
+   - Vậy mô hình thất bại trên webcam chủ yếu vì khung hình và nền khác với dữ liệu huấn luyện,
+     chứ không phải vì mạng không học được đặc trưng khuôn mặt. Với bước cắt khuôn mặt, AUC
+     trên webcam (0,88–0,90) đã ngang AUC trên tập test LFW.
+2. **Trên LFW, bước cắt gần như không thay đổi kết quả.**
+   - ROC-AUC và EER không đổi: khoảng tin cậy của hiệu số chứa 0.
+   - TAR tại FAR 1% tăng 5,9 điểm, nhưng cận dưới khoảng tin cậy chỉ +0,1 điểm, nên đây mới là
+     dấu hiệu chứ chưa phải kết luận.
+   - Điều này hợp lý: ảnh LFW vốn được căn giữa bằng chính bộ phát hiện Viola–Jones, nên bước
+     cắt chủ yếu chỉ phóng to khuôn mặt.
+   - Bước cắt còn bỏ đi nền và quần áo, mà trong LFW các ảnh của cùng một người thường chụp
+     tại cùng sự kiện nên hay có nền và quần áo giống nhau. Nếu mạng `center` đã dựa một phần
+     vào những manh mối đó, thì AUC trên LFW không đổi có thể đang che đi việc mạng `face` dựa
+     vào khuôn mặt nhiều hơn. Đây là giả thuyết, chưa kiểm chứng.
+3. **Kết quả trên bộ dữ liệu chuẩn có thể che mất vấn đề ở nơi triển khai.** Nếu chỉ đo trên
+   LFW, ta sẽ kết luận bước cắt khuôn mặt "vô tác dụng". Trên webcam, đó lại là thay đổi quan
+   trọng nhất. Vì vậy dự án đo ở cả hai nơi: `evaluate` trên LFW, `field-test` trên ảnh tự chụp.
+4. **Vẫn chưa đủ cho xác thực thật.**
+   - Ở τ_d = 0,8, 5/6 ảnh của chủ thể được chấp nhận nhưng 10% người lạ cũng được chấp nhận.
+     Ở τ_d = 0,9, chính chủ thể cũng bị từ chối.
+   - Điều này khớp với TAR chỉ 16,7% tại FAR 1% trên LFW. Giới hạn còn lại nằm ở bản thân mạng,
+     học từ đầu trên khoảng 9 nghìn ảnh (mục 10).
+5. **Chọn epoch theo val loss chưa tối ưu cho xếp hạng.**
+   - Mô hình `face` tốt nhất theo val loss ở epoch 10 (val AUC 0,842), nhưng val AUC còn tăng tới
+     0,868 ở epoch 15, trong khi val loss tăng vì mô hình ngày càng tự tin quá mức.
+   - Với mô hình `center`, khoảng chênh nhỏ hơn: 0,848 so với đỉnh 0,856.
+   - Khi mục tiêu là AUC hoặc TAR tại FAR cố định, nên thử chọn epoch theo val AUC.
+6. **Giới hạn của phép đo trên webcam.**
+   - Chỉ có một chủ thể, một buổi chụp và 6 ảnh thử.
+   - Khoảng tin cậy chỉ phản ánh độ biến thiên của chính các ảnh này, không phản ánh biến
+     thiên giữa các người dùng hay các buổi chụp. Với mẫu nhỏ, bootstrap phân vị còn có xu hướng
+     cho khoảng quá hẹp.
+   - Người lạ là ảnh báo chí trong LFW, không phải ảnh webcam của người khác, nên FAR ở đây chỉ
+     là ước lượng gần đúng cho ứng dụng thật.
+
 ## Tài liệu tham khảo
 
 1. J. Bromley, I. Guyon, Y. LeCun, E. Säckinger, R. Shah. *Signature Verification using a
@@ -354,3 +502,6 @@ Các độ đo không phụ thuộc ngưỡng: **ROC-AUC = 0,853** và **EER = 2
 6. F. Schroff, D. Kalenichenko, J. Philbin. *FaceNet: A Unified Embedding for Face
    Recognition and Clustering*. CVPR, 2015.
 7. D. P. Kingma, J. Ba. *Adam: A Method for Stochastic Optimization*. ICLR, 2015.
+8. P. Viola, M. Jones. *Rapid Object Detection using a Boosted Cascade of Simple Features*.
+   CVPR, 2001.
+9. B. Efron, R. J. Tibshirani. *An Introduction to the Bootstrap*. Chapman & Hall, 1993.

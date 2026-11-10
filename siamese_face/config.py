@@ -19,6 +19,10 @@ VERIFICATION_DIR = "verification"  # ảnh tham chiếu dùng khi suy luận
 
 IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".bmp"})
 
+# Cách tiền xử lý ảnh trước khi resize: "center" cắt vùng vuông ở giữa ảnh; "face" phát
+# hiện khuôn mặt (Haar cascade) rồi cắt vùng vuông quanh nó (xem faces.py).
+PREPROCESS_MODES = ("center", "face")
+
 # Tên file trong thư mục kết quả của một lần chạy (runs/<thời điểm>/).
 MODEL_FILENAME = "model.keras"
 CONFIG_FILENAME = "config.json"
@@ -49,6 +53,7 @@ class TrainConfig:
     augment: bool = False
     patience: int | None = 10
     seed: int = 42
+    preprocess: str = "center"  # một trong PREPROCESS_MODES; lần chạy cũ không có trường này
 
     def save(self, path: str | Path) -> None:
         write_json(asdict(self), path)
@@ -58,6 +63,29 @@ class TrainConfig:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         known = {f.name for f in fields(cls)}
         return cls(**{key: value for key, value in data.items() if key in known})
+
+
+def check_preprocess(preprocess: str) -> str:
+    if preprocess not in PREPROCESS_MODES:
+        raise UsageError(
+            f"Cách tiền xử lý không hợp lệ: {preprocess!r} (chọn một trong {', '.join(PREPROCESS_MODES)})"
+        )
+    return preprocess
+
+
+def preprocess_for_model(model_path: str | Path, requested: str | None = "auto") -> str:
+    """Cách tiền xử lý dùng với một mô hình.
+
+    ``"auto"`` (hoặc ``None``) đọc ``config.json`` nằm cạnh file mô hình - tức thư mục kết
+    quả của lệnh ``train`` - để suy luận dùng đúng cách tiền xử lý lúc huấn luyện; không có
+    file đó thì dùng ``"center"``.
+    """
+    if requested not in (None, "auto"):
+        return check_preprocess(requested)
+    config_path = Path(model_path).parent / CONFIG_FILENAME
+    if config_path.is_file():
+        return check_preprocess(TrainConfig.load(config_path).preprocess)
+    return "center"
 
 
 def write_json(data: Any, path: str | Path) -> None:

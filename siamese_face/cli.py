@@ -13,12 +13,16 @@ from pathlib import Path
 
 from .data import MODES
 from .config import (
+    ANCHOR_DIR,
     IMAGE_SIZE,
     METRICS_FILENAME,
     NEGATIVE_DIR,
+    PREPROCESS_MODES,
     VERIFICATION_DIR,
     TrainConfig,
     UsageError,
+    preprocess_for_model,
+    write_json,
 )
 
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")  # ẩn bớt log C++ của TensorFlow
@@ -65,6 +69,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--val-ratio", type=float, default=defaults.val_ratio, help="(mặc định: %(default)s)")
     p.add_argument("--max-images", type=int, default=defaults.max_images, help="giới hạn số ảnh mỗi loại")
     p.add_argument("--augment", action="store_true", help="bật tăng cường dữ liệu")
+    p.add_argument(
+        "--preprocess",
+        choices=PREPROCESS_MODES,
+        default=defaults.preprocess,
+        help="center: cắt vùng vuông ở giữa ảnh; face: phát hiện khuôn mặt (Haar cascade) rồi "
+        "cắt vùng vuông quanh nó (mặc định: %(default)s)",
+    )
     p.add_argument("--patience", type=int, default=defaults.patience, help="dừng sớm sau N epoch không cải thiện; 0 = tắt (mặc định: %(default)s)")
     p.add_argument("--seed", type=int, default=defaults.seed, help="(mặc định: %(default)s)")
     p.add_argument("--no-eval", action="store_true", help="bỏ qua đánh giá trên tập test sau khi huấn luyện")
@@ -82,6 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--criterion", choices=("f1", "youden", "eer"), default="f1", help="tiêu chí chọn ngưỡng trên tập val (mặc định: %(default)s)")
     p.add_argument("--output-dir", default=None, help="nơi lưu metrics.json và biểu đồ (mặc định: thư mục --run)")
     p.add_argument("--batch-size", type=int, default=32)
+    _add_preprocess_argument(p)
     p.set_defaults(handler=_evaluate)
 
     p = commands.add_parser("verify", help="xác minh một ảnh so với các ảnh tham chiếu")
@@ -90,7 +102,31 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--references", nargs="+", default=[f"data/{VERIFICATION_DIR}"], help="thư mục/file ảnh tham chiếu (mặc định: %(default)s)")
     p.add_argument("--detection-threshold", type=float, default=0.5, help="τ_d (mặc định: %(default)s)")
     p.add_argument("--verification-threshold", type=float, default=0.5, help="τ_v (mặc định: %(default)s)")
+    _add_preprocess_argument(p)
     p.set_defaults(handler=_verify)
+
+    p = commands.add_parser(
+        "field-test",
+        help="đánh giá trên ảnh tự chụp: ảnh thử của chủ thể và ảnh người lạ so với bộ ảnh tham chiếu",
+    )
+    p.add_argument("--model", required=True, help="file mô hình (.keras/.h5)")
+    p.add_argument("--references", nargs="+", default=[f"data/{VERIFICATION_DIR}"], help="ảnh tham chiếu của chủ thể (mặc định: %(default)s)")
+    p.add_argument("--probes", nargs="+", default=[f"data/{ANCHOR_DIR}"], help="ảnh thử của chính chủ thể, chụp riêng với ảnh tham chiếu (mặc định: %(default)s)")
+    p.add_argument("--impostors", default=f"data/{NEGATIVE_DIR}", help="thư mục ảnh người lạ (mặc định: %(default)s)")
+    p.add_argument("--num-impostors", type=int, default=300, help="số người lạ lấy ngẫu nhiên (mặc định: %(default)s)")
+    p.add_argument("--seed", type=int, default=0, help="(mặc định: %(default)s)")
+    p.add_argument("--detection-thresholds", type=float, nargs="+", default=None, help="các giá trị τ_d cần thử (mặc định: 0.3 0.4 0.5 0.6 0.7)")
+    p.add_argument("--verification-threshold", type=float, default=0.5, help="τ_v (mặc định: %(default)s)")
+    p.add_argument("--output", default=None, help="ghi báo cáo ra file JSON")
+    _add_preprocess_argument(p)
+    p.set_defaults(handler=_field_test)
+
+    p = commands.add_parser("compare", help="so sánh hai lần chạy trên cùng tập test (bootstrap)")
+    p.add_argument("runs", nargs=2, metavar="RUN", help="hai thư mục lần chạy: A (gốc) rồi B (mới)")
+    p.add_argument("--n-boot", type=int, default=2000, help="số lần lấy mẫu bootstrap (mặc định: %(default)s)")
+    p.add_argument("--seed", type=int, default=0, help="(mặc định: %(default)s)")
+    p.add_argument("--output", default=None, help="ghi báo cáo ra file JSON")
+    p.set_defaults(handler=_compare)
 
     p = commands.add_parser("summary", help="in kiến trúc và số tham số của mô hình")
     p.add_argument("--model", default=None, help="file mô hình; bỏ trống để dựng kiến trúc mặc định")
@@ -113,6 +149,16 @@ def _add_mode_arguments(parser, defaults: TrainConfig, suffix: str = "") -> None
         type=int,
         default=defaults.max_pairs_per_identity,
         help=f"số cặp dương tối đa mỗi người, chế độ lfw (mặc định: %(default)s){suffix}",
+    )
+
+
+def _add_preprocess_argument(parser) -> None:
+    parser.add_argument(
+        "--preprocess",
+        choices=("auto", *PREPROCESS_MODES),
+        default="auto",
+        help="cách tiền xử lý ảnh; auto: theo config.json nằm cạnh mô hình (thư mục lần chạy), "
+        "không có thì center (mặc định: %(default)s)",
     )
 
 
@@ -177,6 +223,7 @@ def _train(args) -> int:
         augment=args.augment,
         patience=args.patience if args.patience and args.patience > 0 else None,
         seed=args.seed,
+        preprocess=args.preprocess,
     )
     run_dir = train(config)
     print(f"\nĐã lưu mô hình và nhật ký huấn luyện vào: {run_dir}")
@@ -197,7 +244,11 @@ def _evaluate(args) -> int:
 
     if args.run:
         report = evaluate_run(
-            args.run, criterion=args.criterion, batch_size=args.batch_size, output_dir=args.output_dir
+            args.run,
+            criterion=args.criterion,
+            batch_size=args.batch_size,
+            output_dir=args.output_dir,
+            preprocess=args.preprocess,
         )
     else:
         from .data import build_experiment_splits
@@ -211,7 +262,12 @@ def _evaluate(args) -> int:
             max_pairs_per_identity=args.max_pairs_per_identity,
         )
         report = evaluate_model(
-            args.model, splits, criterion=args.criterion, batch_size=args.batch_size, output_dir=args.output_dir
+            args.model,
+            splits,
+            criterion=args.criterion,
+            batch_size=args.batch_size,
+            output_dir=args.output_dir,
+            preprocess=preprocess_for_model(args.model, args.preprocess),
         )
     print(format_report(report))
     destination = args.output_dir or args.run
@@ -225,14 +281,19 @@ def _verify(args) -> int:
     from .verify import resolve_references, verify_image
 
     references = resolve_references(args.references)
+    preprocess = preprocess_for_model(args.model, args.preprocess)
     model = load_siamese_model(args.model)
+    print(f"Tiền xử lý: {preprocess}")
     result = verify_image(
         model,
         args.image,
         references,
         detection_threshold=args.detection_threshold,
         verification_threshold=args.verification_threshold,
+        preprocess=preprocess,
     )
+    for path in result.no_face:
+        print(f"  Cảnh báo: không phát hiện khuôn mặt trong {path} - dùng vùng giữa ảnh.")
     for path, score in zip(result.references, result.scores):
         mark = "khớp" if score >= result.detection_threshold else "    "
         print(f"  {score:.4f}  {mark}  {path}")
@@ -241,6 +302,38 @@ def _verify(args) -> int:
         f"(tỉ lệ {result.ratio:.2f}; cần ≥ {result.verification_threshold:.2f})"
     )
     print("=> XÁC MINH THÀNH CÔNG" if result.verified else "=> KHÔNG KHỚP")
+    return 0
+
+
+def _field_test(args) -> int:
+    from .field_test import DEFAULT_DETECTION_THRESHOLDS, field_test, format_field_test
+
+    report = field_test(
+        args.model,
+        args.references,
+        args.probes,
+        args.impostors,
+        num_impostors=args.num_impostors,
+        seed=args.seed,
+        detection_thresholds=args.detection_thresholds or DEFAULT_DETECTION_THRESHOLDS,
+        verification_threshold=args.verification_threshold,
+        preprocess=args.preprocess,
+    )
+    print(format_field_test(report))
+    if args.output:
+        write_json(report, args.output)
+        print(f"\nĐã ghi báo cáo: {args.output}")
+    return 0
+
+
+def _compare(args) -> int:
+    from .compare import compare_runs, format_comparison
+
+    report = compare_runs(*args.runs, n_boot=args.n_boot, seed=args.seed)
+    print(format_comparison(report))
+    if args.output:
+        write_json(report, args.output)
+        print(f"\nĐã ghi báo cáo: {args.output}")
     return 0
 
 

@@ -47,3 +47,24 @@ def test_train_then_evaluate_smoke(tmp_path):
     saved = json.loads((run_dir / "metrics.json").read_text(encoding="utf-8"))
     assert saved["threshold"] == pytest.approx(report["threshold"])
     assert "Tập test" in format_report(report)
+
+
+def test_train_with_face_preprocessing_records_choice(tmp_path):
+    pytest.importorskip("cv2")
+    data_dir = tmp_path / "data"
+    _make_dataset(data_dir)
+    config = TrainConfig(
+        data_dir=str(data_dir),
+        output_dir=str(tmp_path / "runs"),
+        epochs=1,
+        batch_size=4,
+        embedding_dim=8,
+        patience=None,
+        preprocess="face",
+    )
+    run_dir = train(config)
+    saved = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))
+    assert saved["preprocess"] == "face"
+    report = evaluate_run(run_dir)  # tự đọc cách tiền xử lý từ config.json
+    assert report["preprocess"] == "face"
+    assert "Tiền xử lý: face" in format_report(report)

@@ -16,6 +16,7 @@ from .config import (
     SPLITS_FILENAME,
     TrainConfig,
     UsageError,
+    check_preprocess,
     write_json,
 )
 from .data import build_experiment_splits
@@ -80,6 +81,7 @@ def create_run_dir(output_dir: str | Path) -> Path:
 def train(config: TrainConfig) -> Path:
     """Huấn luyện theo ``config``; trả về thư mục chứa mô hình và nhật ký của lần chạy."""
     keras.utils.set_random_seed(config.seed)
+    check_preprocess(config.preprocess)
     splits = build_experiment_splits(
         config.mode,
         config.data_dir,
@@ -91,7 +93,10 @@ def train(config: TrainConfig) -> Path:
     )
     if len(splits.train) == 0:
         raise UsageError("Tập train rỗng - hãy bổ sung dữ liệu (xem data/README.md).")
-    print(f"Chế độ: {config.mode} | backend Keras: {keras.backend.backend()}")
+    print(
+        f"Chế độ: {config.mode} | tiền xử lý: {config.preprocess}"
+        f" | backend Keras: {keras.backend.backend()}"
+    )
     for name, pairs in splits.items():
         print(f"{name:>5}: {len(pairs):5d} cặp ({pairs.num_positive} cặp cùng người)")
 
@@ -120,9 +125,15 @@ def train(config: TrainConfig) -> Path:
         shuffle=True,
         augment=config.augment,
         seed=config.seed,
+        preprocess=config.preprocess,
     )
     val_ds = (
-        make_dataset(splits.val, image_size=image_size, batch_size=config.batch_size)
+        make_dataset(
+            splits.val,
+            image_size=image_size,
+            batch_size=config.batch_size,
+            preprocess=config.preprocess,
+        )
         if len(splits.val)
         else None
     )

@@ -97,3 +97,17 @@ def test_cli_backend_option():
 def test_cli_requires_a_command():
     with pytest.raises(SystemExit):
         build_parser().parse_args([])
+
+
+def test_cli_preprocess_and_new_commands():
+    parser = build_parser()
+    assert parser.parse_args(["train"]).preprocess == "center"
+    assert parser.parse_args(["train", "--preprocess", "face"]).preprocess == "face"
+    assert parser.parse_args(["verify", "--model", "m", "--image", "x"]).preprocess == "auto"
+    assert parser.parse_args(["evaluate", "--run", "r"]).preprocess == "auto"
+    args = parser.parse_args(["field-test", "--model", "m"])
+    assert args.references == ["data/verification"] and args.probes == ["data/anchor"]
+    assert (args.impostors, args.num_impostors, args.preprocess) == ("data/negative", 300, "auto")
+    assert parser.parse_args(["compare", "a", "b"]).runs == ["a", "b"]
+    with pytest.raises(SystemExit):
+        parser.parse_args(["compare", "a"])

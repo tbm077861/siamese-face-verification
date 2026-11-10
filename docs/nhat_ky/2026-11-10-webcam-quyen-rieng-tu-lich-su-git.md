@@ -82,6 +82,10 @@ luyện lại.
      đèn trần);
    - LFW mất cân bằng về nhân khẩu học (chủ yếu là người nổi tiếng phương Tây), nên mô hình có
      thể kém hơn với các nhóm người ít xuất hiện trong dữ liệu.
+
+   *(Nguyên nhân thứ nhất đã được kiểm chứng ở mục
+   [2026-11-10 – cắt khuôn mặt](2026-11-10-cat-khuon-mat.md): chỉ thêm bước phát hiện và cắt
+   khuôn mặt, AUC trên ảnh webcam đã tăng từ 0,65 lên 0,90.)*
 5. **Ngưỡng chọn trên tập val của LFW không dùng được cho ảnh webcam.** Ở τ_d = 0,485 (ngưỡng
    `eer`), lần 2 không có ảnh thử nào của chủ thể được chấp nhận.
 6. **Người lạ lấy từ LFW chỉ là phép đo gần đúng.** Muốn đo FAR đúng nghĩa cho ứng dụng webcam,
@@ -132,14 +136,19 @@ luyện lại.
 - [x] Xoá hẳn các commit cũ còn được GitHub lưu: chúng vẫn mở được nếu biết đúng mã hash (xem
       kết luận 10). Có hai cách: nhờ GitHub Support, hoặc xoá kho rồi tạo lại. *(Xong ngày
       2026-11-10 bằng cách xoá kho rồi tạo lại.)*
-- [ ] Sau khi kiểm tra xong, dọn các bản dự phòng trên máy vẫn còn chứa ảnh, rồi chạy `git gc`:
+- [x] Sau khi kiểm tra xong, dọn các bản dự phòng trên máy vẫn còn chứa ảnh, rồi chạy `git gc`:
       - nhánh `backup/before-rewrite`;
       - `refs/original/`;
       - remote `appface-old`.
-- [ ] Quyết định hướng cải thiện mô hình. Đề xuất:
+
+      *(Xong ngày 2026-11-10. Không đối tượng nào trong kho trên máy còn chứa ảnh.)*
+- [x] Quyết định hướng cải thiện mô hình. Đề xuất:
       - thêm bước phát hiện và cắt khuôn mặt (Haar cascade của OpenCV) cho cả huấn luyện, đánh
         giá và xác minh;
       - huấn luyện lại trên LFW;
       - so sánh trước và sau trên tập test LFW và trên ảnh webcam.
-- [ ] Đưa phép đo "ảnh webcam so với người lạ" thành một lệnh của CLI để chạy lại được. Hiện
-      phép đo này chỉ là một script tạm, chưa có trong kho.
+
+      *(Xong ngày 2026-11-10, xem [mục cắt khuôn mặt](2026-11-10-cat-khuon-mat.md).)*
+- [x] Đưa phép đo "ảnh webcam so với người lạ" thành một lệnh của CLI để chạy lại được. Hiện
+      phép đo này chỉ là một script tạm, chưa có trong kho. *(Xong ngày 2026-11-10: lệnh
+      `field-test`.)*

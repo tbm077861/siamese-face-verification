@@ -124,3 +124,113 @@ def best_threshold(y_true, y_score, criterion: str = "f1") -> float:
         if value > best_value:
             best_t, best_value = float(t), value
     return best_t
+
+
+def tar_at_far(y_true, y_score, max_far: float) -> float:
+    """Tỉ lệ chấp nhận đúng (TAR = TPR) cao nhất đạt được khi FAR không vượt quá ``max_far``."""
+    fpr, tpr, _ = roc_curve(y_true, y_score)
+    return float(np.max(tpr[fpr <= max_far]))
+
+
+def _bootstrap_samples(y_true, groups, n_boot: int, seed: int, stratify: bool):
+    """Sinh chỉ số của ``n_boot`` mẫu bootstrap lấy lại *theo cụm* (``groups``).
+
+    - ``groups=None``: mỗi phần tử là một cụm.
+    - ``stratify=True``: lấy lại riêng trong từng lớp, giữ nguyên số cụm của mỗi lớp (mỗi cụm
+      phải chỉ chứa một lớp). Cần khi một lớp có rất ít phần tử.
+    Mẫu thiếu một trong hai lớp bị bỏ qua (ROC không xác định).
+    """
+    groups = np.arange(y_true.size) if groups is None else np.asarray(groups)
+    _, cluster = np.unique(groups, return_inverse=True)
+    members = [np.flatnonzero(cluster == k) for k in range(cluster.max() + 1)]
+    if stratify:
+        strata: dict[int, list[int]] = {}
+        for k, index in enumerate(members):
+            labels = np.unique(y_true[index])
+            if labels.size != 1:
+                raise ValueError("stratify=True cần mỗi cụm chỉ chứa một lớp")
+            strata.setdefault(int(labels[0]), []).append(k)
+        pools = [np.asarray(pool) for pool in strata.values()]
+    else:
+        pools = [np.arange(len(members))]
+    rng = np.random.default_rng(seed)
+    produced = 0
+    while produced < n_boot:
+        chosen = np.concatenate([rng.choice(pool, pool.size) for pool in pools])
+        index = np.concatenate([members[k] for k in chosen])
+        if has_both_classes(y_true[index]):
+            produced += 1
+            yield index
+
+
+def _interval(values, confidence: float) -> tuple[float, float]:
+    alpha = (1.0 - confidence) / 2.0
+    low, high = np.quantile(values, [alpha, 1.0 - alpha])
+    return float(low), float(high)
+
+
+def bootstrap_ci(
+    y_true,
+    y_score,
+    statistic,
+    groups=None,
+    stratify: bool = False,
+    n_boot: int = 2000,
+    seed: int = 0,
+    confidence: float = 0.95,
+) -> dict:
+    """Giá trị ``statistic(y_true, y_score)`` kèm khoảng tin cậy bootstrap phân vị."""
+    y_true, y_score = _validate(y_true, y_score)
+    values = [
+        statistic(y_true[index], y_score[index])
+        for index in _bootstrap_samples(y_true, groups, n_boot, seed, stratify)
+    ]
+    low, high = _interval(values, confidence)
+    return {
+        "value": float(statistic(y_true, y_score)),
+        "ci_low": low,
+        "ci_high": high,
+        "confidence": confidence,
+        "n_boot": n_boot,
+    }
+
+
+def paired_bootstrap(
+    y_true,
+    score_a,
+    score_b,
+    statistic,
+    groups=None,
+    n_boot: int = 2000,
+    seed: int = 0,
+    confidence: float = 0.95,
+) -> dict:
+    """So sánh hai mô hình trên *cùng* một tập cặp: hiệu ``statistic(b) - statistic(a)`` và
+    khoảng tin cậy bootstrap phân vị.
+
+    Mỗi lần lặp lấy mẫu lại có hoàn lại theo *cụm* (``groups``, ví dụ danh tính của ảnh
+    anchor) và dùng chung mẫu đó cho cả hai mô hình, nên tính đến việc các cặp của cùng một
+    người không độc lập và điểm của hai mô hình tương quan với nhau. ``groups=None``: mỗi
+    cặp là một cụm.
+    """
+    y_true, score_a = _validate(y_true, score_a)
+    _, score_b = _validate(y_true, score_b)
+    if score_a.shape != score_b.shape:
+        raise ValueError("Hai mô hình phải được chấm trên cùng một tập cặp")
+    deltas = [
+        statistic(y_true[index], score_b[index]) - statistic(y_true[index], score_a[index])
+        for index in _bootstrap_samples(y_true, groups, n_boot, seed, stratify=False)
+    ]
+    value_a, value_b = statistic(y_true, score_a), statistic(y_true, score_b)
+    low, high = _interval(deltas, confidence)
+    n_clusters = y_true.size if groups is None else len(np.unique(np.asarray(groups)))
+    return {
+        "a": float(value_a),
+        "b": float(value_b),
+        "delta": float(value_b - value_a),
+        "ci_low": low,
+        "ci_high": high,
+        "confidence": confidence,
+        "n_boot": n_boot,
+        "n_clusters": int(n_clusters),
+    }

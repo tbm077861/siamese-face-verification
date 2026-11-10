@@ -10,7 +10,7 @@ import keras
 import numpy as np
 import tensorflow as tf
 
-from .config import IMAGE_SIZE, UsageError
+from .config import IMAGE_SIZE, UsageError, check_preprocess
 from .data import PairSet
 
 DEFAULT_SIZE = (IMAGE_SIZE, IMAGE_SIZE)
@@ -37,6 +37,30 @@ def load_image(path, image_size=DEFAULT_SIZE) -> tf.Tensor:
     return image / 255.0
 
 
+def load_face_image(path, image_size=DEFAULT_SIZE) -> tuple[tf.Tensor, bool]:
+    """Như :func:`load_image` nhưng cắt vùng vuông quanh khuôn mặt thay vì vùng giữa ảnh.
+
+    Trả về thêm cờ cho biết có phát hiện được khuôn mặt không (không thấy thì cắt vùng giữa
+    theo ``faces.FALLBACK_FRACTION``). Bước resize và chuẩn hoá giống hệt ``load_image``.
+    """
+    from .faces import crop_face, read_image_rgb
+
+    crop = crop_face(read_image_rgb(path))
+    image = tf.image.resize(crop.image, image_size)
+    return image / 255.0, crop.detected
+
+
+def preprocess_image(path, image_size=DEFAULT_SIZE, preprocess: str = "center") -> tuple[np.ndarray, bool | None]:
+    """Một ảnh -> mảng NumPy ``(cao, rộng, 3)`` dùng khi suy luận.
+
+    Phần tử thứ hai là cờ phát hiện khuôn mặt (chế độ ``"face"``) hoặc ``None`` (``"center"``).
+    """
+    if check_preprocess(preprocess) == "face":
+        image, detected = load_face_image(str(path), image_size)
+        return image.numpy(), detected
+    return load_image(str(path), image_size).numpy(), None
+
+
 def center_crop_square(image: tf.Tensor) -> tf.Tensor:
     """Cắt vùng vuông lớn nhất ở giữa ảnh để resize không làm méo tỉ lệ khuôn mặt."""
     shape = tf.shape(image)
@@ -56,8 +80,23 @@ def augment_image(image: tf.Tensor) -> tf.Tensor:
     return tf.clip_by_value(image, 0.0, 1.0)
 
 
-def load_images(paths, image_size=DEFAULT_SIZE, batch_size: int = 256) -> tf.Tensor:
-    """Nạp nhiều ảnh (song song) thành một tensor ``(n, cao, rộng, 3)`` nằm trên RAM CPU."""
+def load_images(
+    paths, image_size=DEFAULT_SIZE, batch_size: int = 256, preprocess: str = "center"
+) -> tf.Tensor:
+    """Nạp nhiều ảnh thành một tensor ``(n, cao, rộng, 3)`` nằm trên RAM CPU."""
+    paths = [str(path) for path in paths]
+    if check_preprocess(preprocess) == "face":
+        images = np.empty((len(paths), *image_size, 3), dtype=np.float32)
+        detected = 0
+        for i, path in enumerate(paths):
+            image, found = load_face_image(path, image_size)
+            images[i], detected = image.numpy(), detected + found
+        print(
+            f"Phát hiện khuôn mặt ở {detected}/{len(paths)} ảnh"
+            f" ({len(paths) - detected} ảnh còn lại dùng vùng giữa ảnh)."
+        )
+        with tf.device("/CPU:0"):
+            return tf.constant(images)
     dataset = (
         tf.data.Dataset.from_tensor_slices(list(paths))
         .map(lambda path: load_image(path, image_size), num_parallel_calls=tf.data.AUTOTUNE)
@@ -74,6 +113,7 @@ def make_dataset(
     shuffle: bool = False,
     augment: bool = False,
     seed: int | None = None,
+    preprocess: str = "center",
 ) -> tf.data.Dataset:
     """``tf.data.Dataset`` sinh các lô ``((ảnh_anchor, ảnh_candidate), nhãn)``.
 
@@ -86,7 +126,7 @@ def make_dataset(
         raise UsageError("Không thể tạo dataset từ tập cặp rỗng.")
     paths = sorted(set(pairs.anchors) | set(pairs.candidates))
     position = {path: i for i, path in enumerate(paths)}
-    images = load_images(paths, image_size)
+    images = load_images(paths, image_size, preprocess=preprocess)
 
     anchor_index = np.asarray([position[p] for p in pairs.anchors], dtype=np.int32)
     candidate_index = np.asarray([position[p] for p in pairs.candidates], dtype=np.int32)

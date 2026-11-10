@@ -31,6 +31,7 @@ dự án, theo thứ tự thời gian. Các tài liệu khác chỉ mô tả tr�
 |---|---|
 | [2026-11-09](2026-11-09-tai-cau-truc-va-thuc-nghiem-lfw.md) | Tái cấu trúc thành dự án khoa học máy tính; chế độ `lfw`; huấn luyện trên GPU RTX 50; kết quả trên LFW |
 | [2026-11-10](2026-11-10-webcam-quyen-rieng-tu-lich-su-git.md) | Thử mô hình LFW trên ảnh webcam; quyền riêng tư; xoá ảnh cá nhân khỏi lịch sử git |
+| [2026-11-10](2026-11-10-cat-khuon-mat.md) | Phát hiện và cắt khuôn mặt; huấn luyện lại; so sánh trên LFW và trên ảnh webcam; lệnh `field-test` và `compare` |
 
 ## Các kết luận chính đến hiện tại
 
@@ -42,11 +43,17 @@ dự án, theo thứ tự thời gian. Các tài liệu khác chỉ mô tả tr�
    tức là chọn cách đánh đổi giữa FAR và FRR. *(2026-11-09)*
 3. Mạng Koch huấn luyện từ đầu trên LFW đạt AUC 0,853 và EER 21,9% với người chưa từng thấy.
    Mạng bị overfitting từ epoch 7. *(2026-11-09)*
-4. Mô hình đó **không tổng quát hoá được sang ảnh webcam**: AUC giảm còn 0,607 và không có
-   ngưỡng nào dùng được. Căn tỉ lệ khuôn mặt trong khung giống LFW là cần thiết nhưng chưa đủ.
-   *(2026-11-10)*
+4. Nếu chỉ cắt vùng giữa ảnh, mô hình đó **không tổng quát hoá được sang ảnh webcam**: AUC
+   theo ảnh chỉ 0,65. Thêm bước **phát hiện và cắt khuôn mặt** đưa AUC trên webcam lên 0,90,
+   dù trên LFW gần như không đổi (0,853 so với 0,852). *(2026-11-10, hai mục)*
 5. Với GPU RTX 50 (sm_120), TensorFlow 2.20 không dùng được. Dự án huấn luyện bằng Keras 3 với
    backend PyTorch trong WSL2. *(2026-11-09)*
 6. Thư mục chứa ảnh khuôn mặt phải có trong `.gitignore` *trước* khi chụp. Xoá ảnh khỏi commit
    mới nhất là chưa đủ: phải viết lại lịch sử git, và còn phải làm GitHub bỏ các commit cũ mà
    nó vẫn lưu (ví dụ bằng cách xoá rồi tạo lại kho). *(2026-11-10)*
+7. Kết quả tốt trên bộ dữ liệu chuẩn không bảo đảm kết quả tốt ở nơi triển khai, và ngược
+   lại. Luôn đo cả hai (`evaluate` và `field-test`), kèm khoảng tin cậy; khi so sánh hai mô
+   hình, bootstrap phải lấy mẫu theo danh tính. *(2026-11-10)*
+8. Mô hình hiện tại vẫn chưa đủ cho xác thực thật: TAR chỉ 16,7% tại FAR 1% trên LFW. Trên
+   webcam, ngưỡng chấp nhận 5/6 ảnh của chủ thể cũng chấp nhận 10% người lạ. Giới hạn còn lại
+   nằm ở bản thân mạng. *(2026-11-10)*
