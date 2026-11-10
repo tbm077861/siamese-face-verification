@@ -48,4 +48,5 @@ dự án, theo thứ tự thời gian. Các tài liệu khác chỉ mô tả tr�
 5. Với GPU RTX 50 (sm_120), TensorFlow 2.20 không dùng được. Dự án huấn luyện bằng Keras 3 với
    backend PyTorch trong WSL2. *(2026-11-09)*
 6. Thư mục chứa ảnh khuôn mặt phải có trong `.gitignore` *trước* khi chụp. Xoá ảnh khỏi commit
-   mới nhất là chưa đủ, phải viết lại lịch sử git. *(2026-11-10)*
+   mới nhất là chưa đủ: phải viết lại lịch sử git, và còn phải làm GitHub bỏ các commit cũ mà
+   nó vẫn lưu (ví dụ bằng cách xoá rồi tạo lại kho). *(2026-11-10)*

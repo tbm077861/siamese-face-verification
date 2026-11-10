@@ -22,6 +22,7 @@ luyện lại.
     `data/verification/anchor.png`.
   - Nội dung mã ở commit mới nhất không đổi, nhưng mã hash của mọi commit đều đổi.
   - Các tài liệu đang trỏ tới commit "final" đã được cập nhật mã hash mới.
+  - Kho trên GitHub được xoá rồi tạo lại cùng tên, để GitHub không còn lưu các commit cũ.
 - **Tạo thư mục nhật ký này.**
 
 ## Thí nghiệm: mô hình LFW trên ảnh webcam
@@ -105,6 +106,8 @@ luyện lại.
     - **Đã kiểm chứng:** sau khi force-push, API GitHub vẫn trả về commit "final" cũ và cả file
       ảnh, nếu gọi đúng mã hash. Nhánh `main` thì đã sạch. Muốn xoá hẳn, phải nhờ GitHub
       Support hoặc xoá kho đi rồi tạo lại.
+    - Đã xoá kho rồi tạo lại cùng tên, sau đó đẩy lịch sử sạch lên. Từ đó API trả về "không tìm
+      thấy" cho cả commit cũ lẫn file ảnh.
 11. **Làm sạch lịch sử càng sớm càng tốt.** Khi kho chưa có fork, pull request hay người clone,
     việc viết lại lịch sử gần như không ảnh hưởng tới ai.
 12. **Force-push an toàn:** dùng `git push --force-with-lease=<nhánh>:<hash mong đợi>`. Nếu ai đó
@@ -116,13 +119,19 @@ luyện lại.
     - Trước khi commit hoặc push, kiểm tra `git status -sb`, `git log --graph --oneline --all`
       và `git remote -v`.
     - Nếu cần sửa code song song, dùng `git worktree` để mỗi phiên có một thư mục riêng.
+15. **Với kho còn mới, xoá rồi tạo lại kho là cách tự làm nhanh nhất để GitHub bỏ hẳn các commit
+    cũ.** Cách này có hiệu lực ngay, không phải chờ GitHub Support.
+    - Nếu kho đã có sao hoặc issue, xoá kho sẽ mất những thứ đó.
+    - Nếu kho đã có fork, các fork vẫn giữ commit cũ.
+    - Trong hai trường hợp này nên nhờ GitHub Support.
 
 ## Việc còn dở
 
 - [x] Force-push nhánh `main` đã làm sạch lên GitHub, rồi kiểm tra trên GitHub rằng ảnh không
       còn trong lịch sử. *(Xong ngày 2026-11-10. Không commit nào trên `main` còn chứa ảnh.)*
-- [ ] Xoá hẳn các commit cũ còn được GitHub lưu: chúng vẫn mở được nếu biết đúng mã hash (xem
-      kết luận 10). Có hai cách: nhờ GitHub Support, hoặc xoá kho rồi tạo lại.
+- [x] Xoá hẳn các commit cũ còn được GitHub lưu: chúng vẫn mở được nếu biết đúng mã hash (xem
+      kết luận 10). Có hai cách: nhờ GitHub Support, hoặc xoá kho rồi tạo lại. *(Xong ngày
+      2026-11-10 bằng cách xoá kho rồi tạo lại.)*
 - [ ] Sau khi kiểm tra xong, dọn các bản dự phòng trên máy vẫn còn chứa ảnh, rồi chạy `git gc`:
       - nhánh `backup/before-rewrite`;
       - `refs/original/`;
