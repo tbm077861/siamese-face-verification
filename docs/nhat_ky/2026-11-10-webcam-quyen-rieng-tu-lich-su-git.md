@@ -102,6 +102,9 @@ luyện lại.
     - Với kho công khai, ai cũng mở được các commit cũ.
     - Phải viết lại lịch sử bằng `git filter-branch` hoặc `git filter-repo`, rồi force-push.
     - Sau đó GitHub có thể vẫn hiển thị commit cũ theo mã hash trong một thời gian.
+    - **Đã kiểm chứng:** sau khi force-push, API GitHub vẫn trả về commit "final" cũ và cả file
+      ảnh, nếu gọi đúng mã hash. Nhánh `main` thì đã sạch. Muốn xoá hẳn, phải nhờ GitHub
+      Support hoặc xoá kho đi rồi tạo lại.
 11. **Làm sạch lịch sử càng sớm càng tốt.** Khi kho chưa có fork, pull request hay người clone,
     việc viết lại lịch sử gần như không ảnh hưởng tới ai.
 12. **Force-push an toàn:** dùng `git push --force-with-lease=<nhánh>:<hash mong đợi>`. Nếu ai đó
@@ -116,8 +119,10 @@ luyện lại.
 
 ## Việc còn dở
 
-- [ ] Force-push nhánh `main` đã làm sạch lên GitHub, rồi kiểm tra trên GitHub rằng ảnh không
-      còn trong lịch sử.
+- [x] Force-push nhánh `main` đã làm sạch lên GitHub, rồi kiểm tra trên GitHub rằng ảnh không
+      còn trong lịch sử. *(Xong ngày 2026-11-10. Không commit nào trên `main` còn chứa ảnh.)*
+- [ ] Xoá hẳn các commit cũ còn được GitHub lưu: chúng vẫn mở được nếu biết đúng mã hash (xem
+      kết luận 10). Có hai cách: nhờ GitHub Support, hoặc xoá kho rồi tạo lại.
 - [ ] Sau khi kiểm tra xong, dọn các bản dự phòng trên máy vẫn còn chứa ảnh, rồi chạy `git gc`:
       - nhánh `backup/before-rewrite`;
       - `refs/original/`;
