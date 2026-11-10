@@ -252,7 +252,7 @@ dụng cũ so sánh với một ảnh anchor duy nhất. Dùng nhiều ảnh tha
 
 ## 11. Thay đổi so với phiên bản ứng dụng cũ
 
-| Khía cạnh | Phiên bản cũ (commit `611c9cd`) | Phiên bản hiện tại |
+| Khía cạnh | Phiên bản cũ (commit `b3f15cf`, "final") | Phiên bản hiện tại |
 |---|---|---|
 | Phạm vi | Ứng dụng Kivy: đăng nhập bằng khuôn mặt, dashboard quản lý ảnh và tài liệu | Chỉ gồm mô hình và thực nghiệm |
 | Huấn luyện | Không có mã trong kho; chỉ nạp `siamesemodel.h5` từ bên ngoài | `train.py` đầy đủ, lưu cấu hình, danh sách chia và lịch sử huấn luyện |

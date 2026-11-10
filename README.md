@@ -11,7 +11,7 @@ lý thuyết và phương pháp thực nghiệm được trình bày trong
 
 > **Phạm vi.** Từ phiên bản 2.0, kho mã chỉ gồm phần khoa học máy tính: dữ liệu, mô hình,
 > huấn luyện, đánh giá và suy luận. Phần ứng dụng (giao diện Kivy, dashboard, tải ảnh và
-> tài liệu) đã được gỡ bỏ; mã cũ vẫn xem được trong lịch sử git ở commit `611c9cd`.
+> tài liệu) đã được gỡ bỏ; mã cũ vẫn xem được trong lịch sử git ở commit `b3f15cf` ("final").
 
 ## Điểm chính
 
@@ -48,7 +48,10 @@ lý thuyết và phương pháp thực nghiệm được trình bày trong
 │   ├── negatives.py       # Chuẩn bị ảnh negative (LFW)
 │   └── cli.py             # Giao diện dòng lệnh: python -m siamese_face …
 ├── tests/                 # Kiểm thử pytest
-├── docs/phuong_phap.md    # Cơ sở lý thuyết và phương pháp thực nghiệm
+├── docs/
+│   ├── phuong_phap.md     # Cơ sở lý thuyết và phương pháp thực nghiệm
+│   ├── ket_qua/           # Số liệu và biểu đồ gốc của các lần huấn luyện đã báo cáo
+│   └── nhat_ky/           # Nhật ký dự án: thay đổi và kết luận rút ra theo từng phiên
 ├── data/                  # Dữ liệu (xem data/README.md)
 ├── models/                # Nơi đặt mô hình đã huấn luyện (không đưa lên git)
 ├── runs/                  # Kết quả mỗi lần huấn luyện (tự sinh, không đưa lên git)
